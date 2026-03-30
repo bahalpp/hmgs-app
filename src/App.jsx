@@ -118,7 +118,7 @@ export default function App() {
               <>iPhone'a indirmek için alttaki <b>Paylaş</b> ikonuna dokunup <br/> <b>"Ana Ekrana Ekle"</b> seçeneğini seçin.</> 
               : 
               deferredPrompt ?
-              <>Hızlı ve internetsiz erişim için uygulamayı <br/>telefonunuza kurun.</>
+              <>Her an, her yerde en hızlı erişim <br/>için uygulamayı telefonunuza kurun.</>
               :
               <>Uygulamayı yüklemek için tarayıcı menüsünden (üç nokta) <br/><b>"Uygulamayı Yükle"</b> veya <b>"Ana Ekrana Ekle"</b> seçeneğini seçin.</>
             }
