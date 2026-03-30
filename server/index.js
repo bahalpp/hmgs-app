@@ -8,6 +8,11 @@ app.use(cors());
 app.use(express.json());
 initDb();
 
+// FORCED CACHE WIPE: Eski algoritmanın ürettiği haftalık denemeleri sil.
+db.run("DELETE FROM weekly_exams", (err) => {
+    if(!err) console.log("Eski denemeler temizlendi, yeni algoritma devrede.");
+});
+
 // Hafta numarasını hesapla (yılın başından itibaren)
 function getWeekNumber() {
     const now = new Date();
