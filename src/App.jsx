@@ -111,7 +111,7 @@ export default function App() {
 
       {/* PWA Yükleme Afişi */}
       {!isStandalone && showInstallPrompt && (
-        <div className="animate-fade" style={{position:'fixed', bottom: 85, left: '50%', transform: 'translateX(-50%)', width: '90%', maxWidth: 400, background: 'var(--primary)', color: 'white', padding: 18, borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10, zIndex: 999, boxShadow: '0 10px 25px rgba(79,70,229,0.4)', alignItems: 'center'}}>
+        <div className="animate-fade" style={{position:'fixed', bottom: 82, left: 16, right: 16, margin: '0 auto', width: 'calc(100% - 32px)', maxWidth: 400, background: 'var(--primary)', color: 'white', padding: 18, borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10, zIndex: 9991, boxShadow: '0 10px 30px rgba(0,0,0,0.3)', alignItems: 'center', boxSizing: 'border-box'}}>
           <div style={{fontWeight: 600, fontSize: '1rem'}}>📱 Uygulamayı Yükle!</div>
           <div style={{fontSize: '0.85rem', textAlign: 'center', opacity: 0.95}}>
             {isIOS ? 
