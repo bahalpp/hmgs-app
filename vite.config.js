@@ -8,6 +8,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'apple-icon-180.png'],
+      manifestFilename: 'manifest.json',
       manifest: {
         name: 'HMGS Çalışma ve Deneme Uygulaması',
         short_name: 'HMGS Hazırlık',

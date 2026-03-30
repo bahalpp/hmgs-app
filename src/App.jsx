@@ -110,17 +110,20 @@ export default function App() {
       )}
 
       {/* PWA Yükleme Afişi */}
-      {!isStandalone && showInstallPrompt && (deferredPrompt || isIOS) && (
+      {!isStandalone && showInstallPrompt && (
         <div className="animate-fade" style={{position:'fixed', bottom: 85, left: '50%', transform: 'translateX(-50%)', width: '90%', maxWidth: 400, background: 'var(--primary)', color: 'white', padding: 18, borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10, zIndex: 999, boxShadow: '0 10px 25px rgba(79,70,229,0.4)', alignItems: 'center'}}>
           <div style={{fontWeight: 600, fontSize: '1rem'}}>📱 Uygulamayı Yükle!</div>
           <div style={{fontSize: '0.85rem', textAlign: 'center', opacity: 0.95}}>
             {isIOS ? 
               <>iPhone'a indirmek için alttaki <b>Paylaş</b> ikonuna dokunup <br/> <b>"Ana Ekrana Ekle"</b> seçeneğini seçin.</> 
               : 
+              deferredPrompt ?
               <>Hızlı ve internetsiz erişim için uygulamayı <br/>telefonunuza kurun.</>
+              :
+              <>Uygulamayı yüklemek için tarayıcı menüsünden (üç nokta) <br/><b>"Uygulamayı Yükle"</b> veya <b>"Ana Ekrana Ekle"</b> seçeneğini seçin.</>
             }
           </div>
-          {!isIOS && <button style={{background: 'white', color: 'var(--primary)', padding: '10px 24px', borderRadius: 8, fontWeight: 700, border: 'none', cursor: 'pointer', marginTop: 6, fontSize: '0.9rem'}} onClick={handleInstallClick}>Hemen Yükle</button>}
+          {!isIOS && deferredPrompt && <button style={{background: 'white', color: 'var(--primary)', padding: '10px 24px', borderRadius: 8, fontWeight: 700, border: 'none', cursor: 'pointer', marginTop: 6, fontSize: '0.9rem'}} onClick={handleInstallClick}>Hemen Yükle</button>}
           <button style={{position:'absolute', top: 5, right: 10, background:'none', border:'none', color:'white', fontSize:'1.4rem', cursor:'pointer', opacity: 0.8}} onClick={dismissInstall}>✕</button>
         </div>
       )}
