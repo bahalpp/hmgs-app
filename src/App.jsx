@@ -122,13 +122,10 @@ export default function App() {
             {isIOS ? 
               <>iPhone'a indirmek için alttaki <b>Paylaş</b> ikonuna dokunup <br/> <b>"Ana Ekrana Ekle"</b> seçeneğini seçin.</> 
               : 
-              deferredPrompt ?
               <>Her an, her yerde en hızlı erişim <br/>için uygulamayı telefonunuza kurun.</>
-              :
-              <>Uygulamayı yüklemek için tarayıcı menüsünden (üç nokta) <br/><b>"Uygulamayı Yükle"</b> veya <b>"Ana Ekrana Ekle"</b> seçeneğini seçin.</>
             }
           </div>
-          {!isIOS && deferredPrompt && <button style={{background: 'white', color: 'var(--primary)', padding: '10px 24px', borderRadius: 8, fontWeight: 700, border: 'none', cursor: 'pointer', marginTop: 6, fontSize: '0.9rem'}} onClick={handleInstallClick}>Hemen Yükle</button>}
+          {!isIOS && <button style={{background: 'white', color: 'var(--primary)', padding: '10px 24px', borderRadius: 8, fontWeight: 700, border: 'none', cursor: 'pointer', marginTop: 6, fontSize: '0.9rem'}} onClick={handleInstallClick}>Hemen Yükle</button>}
           <button style={{position:'absolute', top: 5, right: 10, background:'none', border:'none', color:'white', fontSize:'1.4rem', cursor:'pointer', opacity: 0.8}} onClick={dismissInstall}>✕</button>
         </div>
       )}
