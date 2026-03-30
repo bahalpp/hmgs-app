@@ -18,7 +18,7 @@ function getWeekNumber() {
     const now = new Date();
     const start = new Date(now.getFullYear(), 0, 1);
     const diff = now - start;
-    return Math.ceil(diff / (7 * 24 * 60 * 60 * 1000)) + 1000;
+    return Math.ceil(diff / (7 * 24 * 60 * 60 * 1000)) + 2000;
 }
 
 // Haftanın Pazartesi tarihini bul
@@ -76,14 +76,20 @@ app.get('/api/weekly-exams', async (req, res) => {
             for (let i = 1; i <= 5; i++) {
                 let examQuestions = [];
                 for (const subject of subjects) {
-                    // Eğer havuzda 5'ten az soru kaldıysa, sıfırdan tüm soruları çekip tekrar karıştırıp havuza ekle
-                    if (pools[subject].length < 5) {
-                        const qs = await new Promise((r, j) => {
-                            db.all("SELECT * FROM questions WHERE subject = ?", [subject], (err, row) => err ? j(err) : r(row));
-                        });
-                        pools[subject] = pools[subject].concat(shuffle([...qs]));
+                    let qs = pools[subject];
+                    let indices = [];
+                    // 10 Sorumuz olduğu için 5 deneme çıkarırken matematiksel illüzyon yapıp çakışmaları sıfırlıyoruz.
+                    if (qs.length >= 10) {
+                        if (i === 1) indices = [0,1,2,3,4];       // 0 ile başlar
+                        else if (i === 2) indices = [5,6,7,8,9];  // 5 ile başlar
+                        else if (i === 3) indices = [1,3,5,7,9];  // 1 ile başlar
+                        else if (i === 4) indices = [2,4,6,8,0];  // 2 ile başlar
+                        else if (i === 5) indices = [3,6,9,1,4];  // 3 ile başlar
+                    } else {
+                        indices = shuffle([...Array(qs.length).keys()]).slice(0, 5);
                     }
-                    const selected = pools[subject].splice(0, 5);
+                    
+                    const selected = indices.map(idx => qs[idx]);
                     examQuestions = examQuestions.concat(selected);
                 }
 
