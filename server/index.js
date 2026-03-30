@@ -24,25 +24,15 @@ function getMonday() {
     return new Date(d.setDate(diff)).toISOString().split('T')[0];
 }
 
-// Belirli bir hafta ve sınav numarası için soru üret
-function generateExam(examNumber, weekNum) {
-    return new Promise((resolve, reject) => {
-        // Her dersten 5 soru seç (seed ile karıştır)
-        const seed = weekNum * 100 + examNumber;
-        const promises = subjects.map(subject => {
-            return new Promise((res, rej) => {
-                // Deterministic random: seed + subject hash
-                db.all(
-                    `SELECT * FROM questions WHERE subject = ? ORDER BY (id * ${seed}) % 997 LIMIT 5`,
-                    [subject], (err, rows) => {
-                        if (err) rej(err);
-                        res(rows || []);
-                    }
-                );
-            });
-        });
-        Promise.all(promises).then(r => resolve(r.flat())).catch(reject);
-    });
+// Fisher-Yates Shuffle 
+function shuffle(array) {
+    let currentIndex = array.length, randomIndex;
+    while (currentIndex !== 0) {
+        randomIndex = Math.floor(Math.random() * currentIndex);
+        currentIndex--;
+        [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+    }
+    return array;
 }
 
 // Haftalık 5 denemeyi üret veya cache'den döndür
@@ -68,17 +58,38 @@ app.get('/api/weekly-exams', async (req, res) => {
             // Önce eski denemeleri temizle (10 haftadan eski)
             db.run("DELETE FROM weekly_exams WHERE week_number < ?", [weekNum - 10]);
 
+            // Her dersin tüm sorularını çekip karıştıralım
+            const pools = {};
+            for (const subject of subjects) {
+                const qs = await new Promise((r, j) => {
+                    db.all("SELECT * FROM questions WHERE subject = ?", [subject], (err, row) => err ? j(err) : r(row));
+                });
+                pools[subject] = shuffle([...qs]);
+            }
+
             const exams = [];
             for (let i = 1; i <= 5; i++) {
-                const questions = await generateExam(i, weekNum);
-                const json = JSON.stringify(questions);
+                let examQuestions = [];
+                for (const subject of subjects) {
+                    // Eğer havuzda 5'ten az soru kaldıysa, sıfırdan tüm soruları çekip tekrar karıştırıp havuza ekle
+                    if (pools[subject].length < 5) {
+                        const qs = await new Promise((r, j) => {
+                            db.all("SELECT * FROM questions WHERE subject = ?", [subject], (err, row) => err ? j(err) : r(row));
+                        });
+                        pools[subject] = pools[subject].concat(shuffle([...qs]));
+                    }
+                    const selected = pools[subject].splice(0, 5);
+                    examQuestions = examQuestions.concat(selected);
+                }
+
+                const json = JSON.stringify(examQuestions);
                 await new Promise((resolve, reject) => {
                     db.run(
                         "INSERT INTO weekly_exams (week_number, exam_number, week_start, questions_json) VALUES (?,?,?,?)",
                         [weekNum, i, monday, json],
                         function(err) {
                             if (err) reject(err);
-                            exams.push({ id: this.lastID, examNumber: i, weekStart: monday, questions });
+                            exams.push({ id: this.lastID, examNumber: i, weekStart: monday, questions: examQuestions });
                             resolve();
                         }
                     );
