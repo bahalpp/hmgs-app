@@ -72,7 +72,12 @@ export default function App() {
   const fmt = s => { const m = Math.floor(s / 60), sec = s % 60; return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`; };
   const fmtH = s => { const h = Math.floor(s/3600), m = Math.floor((s%3600)/60); return h > 0 ? `${h}sa ${m}dk` : `${m}dk`; };
 
-  const daysToExam = Math.max(0, Math.ceil((new Date('2026-04-26') - new Date()) / 86400000));
+  const daysToExam = (() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const examDate = new Date('2026-04-26T00:00:00');
+    return Math.max(0, Math.floor((examDate - today) / 86400000));
+  })();
   const nextMonday = (() => { const d = new Date(); d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7)); return d; })();
   const countdownH = Math.max(0, Math.ceil((nextMonday - new Date()) / 3600000));
 
