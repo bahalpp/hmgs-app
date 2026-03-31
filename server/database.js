@@ -14,11 +14,11 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 const subjects = [
-    "Anayasa Hukuku", "Anayasa Yargısı", "İdare Hukuku", "İdari Yargılama Hukuku",
+    "Anayasa Hukuku", "Anayasa Yargısı", "İdare Hukuku", "İdari Yargılama Usulü",
     "Medeni Hukuk", "Borçlar Hukuku", "Ticaret Hukuku", "Hukuk Yargılama Usulü",
-    "İcra ve İflas Hukuku", "Ceza Hukuku", "Ceza Yargılama Usulü", "İş Hukuku",
-    "Vergi Hukuku", "Vergi Yargılama Usulü", "Avukatlık Hukuku", "Hukuk Felsefesi ve Sosyolojisi",
-    "Türk Hukuk Tarihi"
+    "İcra ve İflas Hukuku", "Ceza Hukuku", "Ceza Yargılama Usulü", "İş ve Sosyal Güvenlik Hukuku",
+    "Vergi Hukuku", "Vergi Usul Hukuku", "Avukatlık Hukuku", "Hukuk Felsefesi ve Sosyolojisi",
+    "Türk Hukuk Tarihi", "Milletlerarası Hukuk", "Milletlerarası Özel Hukuk", "Genel Kamu Hukuku"
 ];
 
 // Seed logic: checks if questions exist in Supabase, if not, inserts seed questions.
