@@ -238,6 +238,8 @@ app.get('/api/flashcards', async (req, res) => {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+let lastExecutionLog = "Arka plan AI motoru henüz çalıştırılmadı.";
+
 async function generateAllSubjectsQuestions(limit = subjects.length) {
     console.log(`=== AI SORU ÜRETİM MOTORU AÇILDI (Sınır: ${limit}) ===`);
     let allNewQuestions = [];
@@ -280,12 +282,15 @@ async function generateAllSubjectsQuestions(limit = subjects.length) {
 
         const { error: insertError } = await supabase.from('questions').insert(insertData);
         if (insertError) {
-             return `HATA! Veriler Supabase'e islenirken cöktü: ${insertError.message}`;
+             lastExecutionLog = `HATA! Veriler Supabase'e islenirken cöktü: ${insertError.message}`;
+             return lastExecutionLog;
         } else {
-             return `BAŞARILI! ${allNewQuestions.length} yepyeni Supabase'e aktarıldı.\nLoglar:\n${logMessages.join('\n')}`;
+             lastExecutionLog = `BAŞARILI! ${allNewQuestions.length} yepyeni Supabase'e aktarıldı.\nLoglar:\n${logMessages.join('\n')}`;
+             return lastExecutionLog;
         }
     } else {
-        return `SIFIR SORU ÜRETİLDİ! Tüm derslerden 0 döndü. Nedenler:\n${logMessages.join('\n')}`;
+        lastExecutionLog = `SIFIR SORU ÜRETİLDİ! Nedenler:\n${logMessages.join('\n')}`;
+        return lastExecutionLog;
     }
 }
 
@@ -307,7 +312,12 @@ app.all('/api/admin/generate-questions', (req, res) => {
     generateAllSubjectsQuestions(limit).catch(e => console.error(e));
     
     const countMsg = limit < subjects.length ? limit : subjects.length;
-    res.json({ message: `Sistem başarıyla tetiklendi! Toplam ${countMsg} ders için arka planda Yapay Zeka üretimi başladı. Yaklaşık 3-4 dakika sürecektir. İşlem bitince soru havuzu tamamen yenilenecektir.` });
+    res.json({ message: `Sistem başarıyla tetiklendi! Toplam ${countMsg} ders için arka planda Yapay Zeka üretimi başladı. Yaklaşık 3-4 dakika sürecektir. Bittiğinde şu log adresinden raporu okuyabilirsin: /api/admin/logs` });
+});
+
+app.get('/api/admin/logs', (req, res) => {
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.send(lastExecutionLog);
 });
 
 app.listen(PORT, () => {
