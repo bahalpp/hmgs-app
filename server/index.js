@@ -238,12 +238,15 @@ app.get('/api/flashcards', async (req, res) => {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function generateAllSubjectsQuestions() {
-    console.log("=== AI SORU ÜRETİM MOTORU (SUPABASE) BAŞLADI ===");
+async function generateAllSubjectsQuestions(limit = subjects.length) {
+    console.log(`=== AI SORU ÜRETİM MOTORU AÇILDI (Sınır: ${limit}) ===`);
     let allNewQuestions = [];
     let logMessages = [];
     
-    for (const subject of subjects) {
+    // Sadece limit kadar dersi döngüye al
+    let processSubjects = subjects.slice(0, limit);
+
+    for (const subject of processSubjects) {
         try {
             const newQs = await askAIForQuestions(subject);
             if (newQs && newQs.length > 0) {
@@ -255,7 +258,7 @@ async function generateAllSubjectsQuestions() {
         } catch(e) {
             logMessages.push(`[ERROR] ${subject}: ${e.message}`);
         }
-        await sleep(5000); // 5 saniye (15 RPM Google Limitine yakalanmamak için biraz daha yavaş).
+        if (processSubjects.length > 1) await sleep(5000); // Tek ders girildiyse uyumaya gerek yok
     }
 
     if (allNewQuestions.length > 0) {
@@ -292,14 +295,17 @@ cron.schedule('0 3 * * 0', async () => {
     await generateAllSubjectsQuestions();
 });
 
-// 2. MANUEL (KULLANICI) SİSTEMİ: Admin butona basarsa 500 soru üretir ve sonucu döner.
+// 2. MANUEL (KULLANICI) SİSTEMİ: Admin butona basarsa soru üretir ve sonucu döner. (?limit=1 gibi eklenirse hızlı çalışır)
 app.all('/api/admin/generate-questions', async (req, res) => {
     const adminPassword = req.body?.password || req.query?.password;
     if (adminPassword !== 'avuka2026') return res.status(401).json({ error: "Geçersiz şifre" });
     
+    let limit = subjects.length;
+    if (req.query.limit) limit = parseInt(req.query.limit);
+
     // Geriye sormadan asenkron devam etmek yerine bekleyip analizini göreceğiz.
     try {
-        const resultLog = await generateAllSubjectsQuestions();
+        const resultLog = await generateAllSubjectsQuestions(limit);
         res.setHeader('Content-Type', 'text/plain; charset=utf-8');
         res.send(resultLog);
     } catch(e) {
