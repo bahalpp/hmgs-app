@@ -46,16 +46,16 @@ async function initDb() {
                 const allSeeds = [...seed1, ...seed2, ...seed3, ...seed4, ...seed5];
                 
                 const insertData = allSeeds.map(q => ({
-                    subject: q.subject,
-                    question_text: q.question,
-                    option_a: q.options[0],
-                    option_b: q.options[1],
-                    option_c: q.options[2],
-                    option_d: q.options[3],
-                    option_e: q.options[4],
-                    correct_answer: String.fromCharCode(65 + q.options.indexOf(q.answer)),
-                    explanation: q.explanation,
-                    topic_summary: q.topicSummary
+                    subject: q[0],
+                    question_text: q[1],
+                    option_a: q[2],
+                    option_b: q[3],
+                    option_c: q[4],
+                    option_d: q[5],
+                    option_e: q[6],
+                    correct_answer: q[7],
+                    explanation: q[8],
+                    topic_summary: q[9]
                 }));
 
                 const { error: insertError } = await supabase.from('questions').insert(insertData);
