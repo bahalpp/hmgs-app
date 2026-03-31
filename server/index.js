@@ -1,6 +1,9 @@
 const express = require('express');
 const cors = require('cors');
 const { db, initDb, subjects } = require('./database');
+const cron = require('node-cron');
+const { askAIForQuestions } = require('./question-generator');
+require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -170,4 +173,43 @@ app.get('/api/flashcards', (req, res) => {
     });
 });
 
-app.listen(PORT, () => console.log(`HMGS Server: http://localhost:${PORT}`));
+// --- YAPAY ZEKA OTOMATİK SORU ÜRETİM MOTORU ---
+
+// Helper: 4 saniye bekle ("Too many requests" hatası almamak için)
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function generateAllSubjectsQuestions() {
+    console.log("=== AI SORU ÜRETİM MOTORU BAŞLADI ===");
+    for (const subject of subjects) {
+        const newQs = await askAIForQuestions(subject);
+        if (newQs && newQs.length > 0) {
+            // Veritabanına kaydet
+            const stmt = db.prepare(`INSERT INTO questions (subject,question_text,option_a,option_b,option_c,option_d,option_e,correct_answer,explanation,topic_summary) VALUES (?,?,?,?,?,?,?,?,?,?)`);
+            newQs.forEach(q => stmt.run(...q));
+            stmt.finalize();
+            console.log(`[+] ${subject} için ${newQs.length} soru veritabanına eklendi.`);
+        }
+        await sleep(4000); // 4 saniye mola
+    }
+    console.log("=== AI SORU ÜRETİM MOTORU BİTİRDİ ===");
+}
+
+// 1. OTOMATİK SİSTEM: Her 21 günde (3 haftada bir) gece saat 04:00'te uyan ve yeni sorular çek.
+cron.schedule('0 4 */21 * *', async () => {
+    console.log("Zamanlayıcı tetiklendi: 3 Haftalık Rutin Soru Üretimi");
+    await generateAllSubjectsQuestions();
+});
+
+// 2. MANUEL (KULLANICI) SİSTEMİ: Admin butona basarsa hemen tüm derslerden toplam 100 yeni soru üretir.
+app.post('/api/admin/generate-questions', async (req, res) => {
+    const adminPassword = req.body.password;
+    if (adminPassword !== 'avuka2026') return res.status(401).json({ error: "Geçersiz şifre" });
+    
+    // Asenkron olarak arkaplanda başlat ve kullanıcıyı bekletmeden yanıt dön.
+    generateAllSubjectsQuestions().catch(e => console.error(e));
+    res.json({ message: "Yapay zeka soru üretimine arka planda başlandı. Yaklaşık 2 dakika sürecektir. İşlem bitince soru havuzu 100 soru artacaktır." });
+});
+
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
