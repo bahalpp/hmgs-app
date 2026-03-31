@@ -28,13 +28,10 @@ TEKNİK FORMAT KURALLARI:
 `;
 
     try {
-        console.log(`AI (Official SDK - Stable v1): "${subjectName}" için ${requestedCount} soru yazılıyor...`);
+        console.log(`AI (Final Stabilization Mod): "${subjectName}" için sorular yazılıyor...`);
         
-        // RESMÎ SYNTAX: v1 (Stable) endpointini zorunlu kılıyoruz ve en güncel flash takısını kullanıyoruz
-        const model = genAI.getGenerativeModel(
-            { model: "gemini-1.5-flash-latest" }, 
-            { apiVersion: "v1" }
-        );
+        // EN TEMEL KOMUT: Suffix yok, Beta zorlaması yok. SDK kendi yolunu bulsun.
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         
         const result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
