@@ -180,23 +180,36 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function generateAllSubjectsQuestions() {
     console.log("=== AI SORU ÜRETİM MOTORU BAŞLADI ===");
+    let allNewQuestions = [];
+    
     for (const subject of subjects) {
         const newQs = await askAIForQuestions(subject);
         if (newQs && newQs.length > 0) {
-            // Veritabanına kaydet
-            const stmt = db.prepare(`INSERT INTO questions (subject,question_text,option_a,option_b,option_c,option_d,option_e,correct_answer,explanation,topic_summary) VALUES (?,?,?,?,?,?,?,?,?,?)`);
-            newQs.forEach(q => stmt.run(...q));
-            stmt.finalize();
-            console.log(`[+] ${subject} için ${newQs.length} soru veritabanına eklendi.`);
+            allNewQuestions = allNewQuestions.concat(newQs);
+            console.log(`[+] ${subject} için ${newQs.length} soru hafızaya alındı.`);
         }
-        await sleep(4000); // 4 saniye mola
+        await sleep(4000); // Mola
     }
-    console.log("=== AI SORU ÜRETİM MOTORU BİTİRDİ ===");
+
+    if (allNewQuestions.length > 0) {
+        // Atomic wipe and replace to prevent downtime
+        db.serialize(() => {
+            db.run("BEGIN TRANSACTION");
+            db.run("DELETE FROM questions");
+            db.run("DELETE FROM weekly_exams"); // Geçmiş denemeler de sıfırlansın ki yeni haftaya temiz girilsin.
+            
+            const stmt = db.prepare(`INSERT INTO questions (subject,question_text,option_a,option_b,option_c,option_d,option_e,correct_answer,explanation,topic_summary) VALUES (?,?,?,?,?,?,?,?,?,?)`);
+            allNewQuestions.forEach(q => stmt.run(...q));
+            stmt.finalize();
+            db.run("COMMIT");
+            console.log(`=== BAŞARILI: Eskiler imha edildi, ${allNewQuestions.length} yepyeni soru sisteme zerk edildi! ===`);
+        });
+    }
 }
 
-// 1. OTOMATİK SİSTEM: Her 21 günde (3 haftada bir) gece saat 04:00'te uyan ve yeni sorular çek.
-cron.schedule('0 4 */21 * *', async () => {
-    console.log("Zamanlayıcı tetiklendi: 3 Haftalık Rutin Soru Üretimi");
+// 1. OTOMATİK SİSTEM: Her Pazar gecesi saat 03:00'te uyan, havuzu SIFIRLA ve 500 soru çek.
+cron.schedule('0 3 * * 0', async () => {
+    console.log("Zamanlayıcı tetiklendi: Haftalık Yık-Yap Soru Üretimi");
     await generateAllSubjectsQuestions();
 });
 
