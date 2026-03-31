@@ -39,8 +39,7 @@ TEKNİK FORMAT KURALLARI:
         const result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             generationConfig: {
-                temperature: 0.8,
-                responseMimeType: "application/json"
+                temperature: 0.8
             }
         });
         
