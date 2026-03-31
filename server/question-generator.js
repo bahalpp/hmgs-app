@@ -63,11 +63,33 @@ Cevabın YALNIZCA geçerli bir JSON formatında olmalı. Asla başına veya sonu
         // Güvenlik 3: Gemini 2.5 Flash çok akıllı olduğu için paragrafları enter (newline) ile ayırıyor.
         // Ancak JSON stringi içinde raw (kaçışsız) \n veya \t karakteri olursa JSON.parse anında ÇÖKER (Bad Control Character).
         // Bunu önlemek için rawText içindeki tüm alt satır ve sekmeleri boşluğa (space) dönüştürüp tek satır (flat) yapıyoruz.
-        rawText = rawText.replace(/[\n\r\t]+/g, ' ');
+        rawText = rawText.replace(/[\n\r\t]+/g, ' ').trim();
 
-        // JSON parse işleminde patlamaması için ekstra boşluk temizliği
-        const questionsJson = JSON.parse(rawText);
+        // Güvenlik 4: Bazı durumlarda Gemini içerideki tırnak işaretlerini kaçırmayı (escape) unutabiliyor.
+        // Çok karmaşık regex'ler yerine en temel temizliği yapıyoruz.
+        // Eğer JSON.parse doğrudan hata verirse, bir kez de tırnak temizliği deneriz.
+        let questionsJson;
+        try {
+            questionsJson = JSON.parse(rawText);
+        } catch (initialError) {
+            console.log("JSON Parse ilk deneme başarısız, temizlik yapılıyor...");
+            // Basit temizlik: property isimleri dışındaki şüpheli tırnakları ve fazla virgülleri temizleme denemesi
+            // Bu kısım riskli olduğu için sadece hata durumunda fallback olarak çalışır.
+            try {
+                // Sadece en yaygın hatalar için basit bir tamir:
+                const cleanedText = rawText
+                    .replace(/,\s*]/g, ']') // Sona sarkan virgüller
+                    .replace(/,\s*}/g, '}'); // Sona sarkan virgüller
+                questionsJson = JSON.parse(cleanedText);
+            } catch (secondError) {
+                throw new Error(`JSON Format Hatası: ${initialError.message}`);
+            }
+        }
         
+        if (!Array.isArray(questionsJson)) {
+            throw new Error("Üretilen veri bir dizi (array) formatında değil.");
+        }
+
         const dbFormat = questionsJson.map(q => [
             q.subject,
             q.question,

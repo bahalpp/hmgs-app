@@ -239,59 +239,70 @@ app.get('/api/flashcards', async (req, res) => {
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 let lastExecutionLog = "Arka plan AI motoru henüz çalıştırılmadı.";
+let isGenerating = false;
 
 async function generateAllSubjectsQuestions(limit = subjects.length) {
+    if (isGenerating) {
+        lastExecutionLog += `\n[${new Date().toISOString()}] UYARI: Zaten bir üretim işlemi devam ediyor. Yeni istek reddedildi.\n`;
+        return;
+    }
+    
+    isGenerating = true;
     lastExecutionLog = `[${new Date().toISOString()}] AI Soru Üretim Motoru Başlatıldı. Toplam Ders: ${limit}\n`;
     let allNewQuestions = [];
     
-    let processSubjects = subjects.slice(0, limit);
+    try {
+        let processSubjects = subjects.slice(0, limit);
 
-    for (const subject of processSubjects) {
-        lastExecutionLog += `[*] ${subject} için istek atılıyor...\n`;
-        try {
-            const newQs = await askAIForQuestions(subject);
-            if (newQs && newQs.length > 0) {
-                allNewQuestions = allNewQuestions.concat(newQs);
-                lastExecutionLog += `  -> BAŞARILI: ${newQs.length} soru alındı.\n`;
-            } else {
-                lastExecutionLog += `  -> BAŞARISIZ: 0 soru dondü (Muhtemel JSON Parse Hatası veya Rate Limit).\n`;
+        for (const subject of processSubjects) {
+            lastExecutionLog += `[*] ${subject} için istek atılıyor...\n`;
+            try {
+                const newQs = await askAIForQuestions(subject);
+                if (newQs && newQs.length > 0) {
+                    allNewQuestions = allNewQuestions.concat(newQs);
+                    lastExecutionLog += `  -> BAŞARILI: ${newQs.length} soru alındı.\n`;
+                } else {
+                    lastExecutionLog += `  -> BAŞARISIZ: 0 soru döndü (JSON veya Limit).\n`;
+                }
+            } catch(e) {
+                lastExecutionLog += `  -> [HATA]: ${subject} dersinde sorun çıktı: ${e.message}\n`;
             }
-        } catch(e) {
-            lastExecutionLog += `  -> [KRİTİK HATA]: ${e.message}\n`;
+            if (processSubjects.indexOf(subject) < processSubjects.length - 1) {
+                lastExecutionLog += `  -> Mola veriliyor (5 sn)...\n`;
+                await sleep(5000); 
+            }
         }
-        if (processSubjects.length > 1) {
-            lastExecutionLog += `  -> Mola veriliyor (5 sn)...\n`;
-            await sleep(5000); // 15 RPM Google Limitine takılmamak için 5 saniye
-        }
-    }
 
-    if (allNewQuestions.length > 0) {
-        lastExecutionLog += `\n[${new Date().toISOString()}] Eski Havuz Siliniyor...\n`;
-        await supabase.from('questions').delete().neq('id', 0);
-        await supabase.from('weekly_exams').delete().neq('id', 0);
-            
-        lastExecutionLog += `[${new Date().toISOString()}] Yeni üretilen ${allNewQuestions.length} soru Supabase'e enjekte ediliyor...\n`;
-        const insertData = allNewQuestions.map(q => ({
-            subject: q[0],
-            question_text: q[1],
-            option_a: q[2],
-            option_b: q[3],
-            option_c: q[4],
-            option_d: q[5],
-            option_e: q[6],
-            correct_answer: q[7],
-            explanation: q[8],
-            topic_summary: q[9]
-        }));
+        if (allNewQuestions.length > 0) {
+            lastExecutionLog += `\n[${new Date().toISOString()}] Eski Havuz Siliniyor...\n`;
+            await supabase.from('questions').delete().neq('id', 0);
+            await supabase.from('weekly_exams').delete().neq('id', 0);
+                
+            lastExecutionLog += `[${new Date().toISOString()}] Yeni üretilen ${allNewQuestions.length} soru enjekte ediliyor...\n`;
+            const insertData = allNewQuestions.map(q => ({
+                subject: q[0],
+                question_text: q[1],
+                option_a: q[2],
+                option_b: q[3],
+                option_c: q[4],
+                option_d: q[5],
+                option_e: q[6],
+                correct_answer: q[7],
+                explanation: q[8],
+                topic_summary: q[9]
+            }));
 
-        const { error: insertError } = await supabase.from('questions').insert(insertData);
-        if (insertError) {
-             lastExecutionLog += `[HATA] Veriler islenirken cöktü: ${insertError.message}\n`;
+            const { error: insertError } = await supabase.from('questions').insert(insertData);
+            if (insertError) {
+                 lastExecutionLog += `[HATA] Veriler islenirken cöktü: ${insertError.message}\n`;
+            } else {
+                 lastExecutionLog += `[MUTLU SON] Tüm süreç başarıyla bitti!\n`;
+            }
         } else {
-             lastExecutionLog += `[MUTLU SON] Tüm süreç başarıyla bitti!\n`;
+            lastExecutionLog += `\n[KÜLLİYEN HATA] SIFIR SORU ÜRETİLDİ! Süreç iptal edildi.\n`;
         }
-    } else {
-        lastExecutionLog += `\n[KÜLLİYEN HATA] SIFIR SORU ÜRETİLDİ! Süreç iptal edildi.\n`;
+    } finally {
+        isGenerating = false;
     }
 }
 
