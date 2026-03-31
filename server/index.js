@@ -248,37 +248,44 @@ async function generateAllSubjectsQuestions(limit = subjects.length) {
     }
     
     isGenerating = true;
-    lastExecutionLog = `[${new Date().toISOString()}] AI Soru Üretim Motoru Başlatıldı. Toplam Ders: ${limit}\n`;
+    lastExecutionLog = `[${new Date().toISOString()}] AI Soru Üretim Motoru Başlatıldı (1.5 Pro Modu). Hedef: 5 Deneme Sınavı x 120 Soru\n`;
     let allNewQuestions = [];
     
     try {
         let processSubjects = subjects.slice(0, limit);
 
-        for (const subject of processSubjects) {
-            lastExecutionLog += `[*] ${subject} için istek atılıyor...\n`;
+        for (const subjectObj of processSubjects) {
+            const requestedCount = subjectObj.countPerExam * 5; // 5 Deneme için toplam soru
+            lastExecutionLog += `[*] ${subjectObj.name} için ${requestedCount} akademik soru isteniyor...\n`;
+            
             try {
-                const newQs = await askAIForQuestions(subject);
+                const newQs = await askAIForQuestions(subjectObj.name, requestedCount);
                 if (newQs && newQs.length > 0) {
                     allNewQuestions = allNewQuestions.concat(newQs);
                     lastExecutionLog += `  -> BAŞARILI: ${newQs.length} soru alındı.\n`;
                 } else {
-                    lastExecutionLog += `  -> BAŞARISIZ: 0 soru döndü (JSON veya Limit).\n`;
+                    lastExecutionLog += `  -> BAŞARISIZ: 0 soru döndü.\n`;
                 }
             } catch(e) {
-                lastExecutionLog += `  -> [HATA]: ${subject} dersinde sorun çıktı: ${e.message}\n`;
+                lastExecutionLog += `  -> [HATA]: ${subjectObj.name} dersinde sorun: ${e.message}\n`;
             }
-            if (processSubjects.indexOf(subject) < processSubjects.length - 1) {
-                lastExecutionLog += `  -> Mola veriliyor (5 sn)...\n`;
-                await sleep(5000); 
+
+            // Gemini 1.5 Pro Ücretsiz Kotası: 2 RPM (Dakikada 2 İstek). 
+            // 35 saniye bekleyerek güvenli alanda kalıyoruz.
+            if (processSubjects.indexOf(subjectObj) < processSubjects.length - 1) {
+                lastExecutionLog += `  -> Profesör düşünüyor (35 sn mola)...\n`;
+                await sleep(35000); 
             }
         }
 
-        if (allNewQuestions.length > 0) {
-            lastExecutionLog += `\n[${new Date().toISOString()}] Eski Havuz Siliniyor...\n`;
+        if (allNewQuestions.length >= 100) { // En azından bir miktar soru gelmiş olmalı
+            lastExecutionLog += `\n[${new Date().toISOString()}] Veritabanı Yenileniyor...\n`;
+            
+            // 1. Mevcut tüm soruları ve denemeleri sil
             await supabase.from('questions').delete().neq('id', 0);
             await supabase.from('weekly_exams').delete().neq('id', 0);
                 
-            lastExecutionLog += `[${new Date().toISOString()}] Yeni üretilen ${allNewQuestions.length} soru enjekte ediliyor...\n`;
+            // 2. Soruları 'questions' tablosuna enjekte et
             const insertData = allNewQuestions.map(q => ({
                 subject: q[0],
                 question_text: q[1],
@@ -294,13 +301,58 @@ async function generateAllSubjectsQuestions(limit = subjects.length) {
 
             const { error: insertError } = await supabase.from('questions').insert(insertData);
             if (insertError) {
-                 lastExecutionLog += `[HATA] Veriler islenirken cöktü: ${insertError.message}\n`;
-            } else {
-                 lastExecutionLog += `[MUTLU SON] Tüm süreç başarıyla bitti!\n`;
+                 lastExecutionLog += `[HATA] Soru enjeksiyonu başarısız: ${insertError.message}\n`;
+                 throw insertError;
             }
+
+            // 3. 5 ADET BENZERSİZ DENEME SINAVI OLUŞTUR
+            // Her deneme 120 soru (ÖSYM dağılımına uygun)
+            lastExecutionLog += `[${new Date().toISOString()}] 5 Adet Benzersiz Deneme Sınavı Hazırlanıyor...\n`;
+            
+            const weekStart = new Date().toISOString().split('T')[0];
+            const weekNumber = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000));
+
+            for (let i = 1; i <= 5; i++) {
+                let examQuestions = [];
+                
+                // Her ders için o dersin sorularından countPerExam kadarını bu denemeye al
+                for (const subj of subjects) {
+                    const subjQs = allNewQuestions.filter(q => q[0] === subj.name);
+                    // Her deneme için farklı sorular seçmek için (i-1)*countPerExam'den başla
+                    const startIdx = (i - 1) * subj.countPerExam;
+                    const selected = subjQs.slice(startIdx, startIdx + subj.countPerExam);
+                    
+                    examQuestions = examQuestions.concat(selected.map(q => ({
+                        subject: q[0],
+                        question_text: q[1],
+                        option_a: q[2],
+                        option_b: q[3],
+                        option_c: q[4],
+                        option_d: q[5],
+                        option_e: q[6],
+                        correct_answer: q[7],
+                        explanation: q[8],
+                        topic_summary: q[9]
+                    })));
+                }
+
+                // Sınavın içindeki soruları karıştır (Shuffle)
+                examQuestions = examQuestions.sort(() => Math.random() - 0.5);
+
+                await supabase.from('weekly_exams').insert({
+                    week_number: weekNumber,
+                    exam_number: i,
+                    week_start: weekStart,
+                    questions_json: examQuestions
+                });
+            }
+
+            lastExecutionLog += `[MUTLU SON] 5 Deneme Sınavı (Toplam ${allNewQuestions.length} soru) başarıyla oluşturuldu!\n`;
         } else {
-            lastExecutionLog += `\n[KÜLLİYEN HATA] SIFIR SORU ÜRETİLDİ! Süreç iptal edildi.\n`;
+            lastExecutionLog += `\n[HATA] Yeterli soru üretilemedi (${allNewQuestions.length}). Süreç iptal.\n`;
         }
+    } catch (globalErr) {
+        lastExecutionLog += `\n[KRİTİK SİSTEM HATASI]: ${globalErr.message}\n`;
     } finally {
         isGenerating = false;
     }

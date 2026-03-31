@@ -14,11 +14,26 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 const subjects = [
-    "Anayasa Hukuku", "Anayasa Yargısı", "İdare Hukuku", "İdari Yargılama Usulü",
-    "Medeni Hukuk", "Borçlar Hukuku", "Ticaret Hukuku", "Hukuk Yargılama Usulü",
-    "İcra ve İflas Hukuku", "Ceza Hukuku", "Ceza Yargılama Usulü", "İş ve Sosyal Güvenlik Hukuku",
-    "Vergi Hukuku", "Vergi Usul Hukuku", "Avukatlık Hukuku", "Hukuk Felsefesi ve Sosyolojisi",
-    "Türk Hukuk Tarihi", "Milletlerarası Hukuk", "Milletlerarası Özel Hukuk", "Genel Kamu Hukuku"
+    { name: "Medeni Hukuk", countPerExam: 15 },
+    { name: "Borçlar Hukuku", countPerExam: 12 },
+    { name: "Ticaret Hukuku", countPerExam: 12 },
+    { name: "Hukuk Yargılama Usulü", countPerExam: 12 },
+    { name: "Ceza Hukuku", countPerExam: 9 },
+    { name: "Anayasa Hukuku", countPerExam: 6 },
+    { name: "İdare Hukuku", countPerExam: 6 },
+    { name: "Ceza Yargılama Usulü", countPerExam: 6 },
+    { name: "İcra ve İflas Hukuku", countPerExam: 6 },
+    { name: "İş ve Sosyal Güvenlik Hukuku", countPerExam: 6 },
+    { name: "Anayasa Yargısı", countPerExam: 3 },
+    { name: "İdari Yargılama Usulü", countPerExam: 3 },
+    { name: "Vergi Hukuku", countPerExam: 3 },
+    { name: "Vergi Usul Hukuku", countPerExam: 3 },
+    { name: "Avukatlık Hukuku", countPerExam: 3 },
+    { name: "Hukuk Felsefesi ve Sosyolojisi", countPerExam: 3 },
+    { name: "Türk Hukuk Tarihi", countPerExam: 3 },
+    { name: "Milletlerarası Hukuk", countPerExam: 3 },
+    { name: "Milletlerarası Özel Hukuk", countPerExam: 3 },
+    { name: "Genel Kamu Hukuku", countPerExam: 3 }
 ];
 
 // Seed logic: checks if questions exist in Supabase, if not, inserts seed questions.

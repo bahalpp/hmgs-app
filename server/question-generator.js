@@ -1,97 +1,84 @@
 const { GoogleGenAI } = require('@google/genai');
 
-async function askAIForQuestions(subjectName) {
+async function askAIForQuestions(subjectName, requestedCount = 25) {
     if (!process.env.GEMINI_API_KEY) {
-        console.error("GEMINI_API_KEY (.env dosyasında) eksik! Lütfen Google AI Studio'dan bedava key alıp kaydedin. Üretim atlanıyor...");
+        console.error("GEMINI_API_KEY eksik! Üretim atlanıyor...");
         return [];
     }
 
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     
     const prompt = `
-Sen Türkiye HMGS (Hukuk Mesleklerine Giriş Sınavı) seviyesinde zor soru hazırlayan, ÖSYM mantığını bilen bir hukuk profesörüsün.
+Sen Türkiye HMGS (Hukuk Mesleklerine Giriş Sınavı) seviyesinde soru hazırlayan, ÖSYM mantığını ve son yargı kararlarını çok iyi bilen bir HUKUK PROFESÖRÜSÜN.
 Ders: "${subjectName}". 
 
-Kurallar:
-1. Bu dersten tam olarak 25 adet yeni, tamamen özgün çoktan seçmeli (A, B, C, D, E) soru oluştur.
-2. Sorular ezberden ziyade analitik düşünmeyi veya örnek bir vaka (olay) çözmeyi gerektirsin. Çeldirici şıklar kuvvetli olsun.
-3. Asla sadece cevap anahtarı verme, "doğru şıkkı (correct)" ve neden doğru olduğunu ilgili Kanun Maddesiyle ("explanation") mutlaka açıkla.
-4. Altına kullanıcının sınavda o konuyu hatırlaması için kısa bir "Hap Bilgi" ("topicSummary") yaz.
+SENDEN İSTENEN: Bu ders konusu üzerine tam olarak ${requestedCount} adet, birbirinden farklı, özgün ve yüksek kaliteli çoktan seçmeli (A, B, C, D, E) soru oluşturman.
 
-Cevabın YALNIZCA geçerli bir JSON formatında olmalı. Asla başına veya sonuna \`\`\`json gibi markdown sembolleri veya fazladan açıklamalar KOYMA.
-Örnek Format:
-[
-  {
-    "subject": "${subjectName}",
-    "question": "Soru metni...",
-    "optA": "...",
-    "optB": "...",
-    "optC": "...",
-    "optD": "...",
-    "optE": "...",
-    "correct": "C",
-    "explanation": "Doğru cevap C'dir çünkü TMK m. XYZ'ye göre...",
-    "topicSummary": "Hap Bilgi: İlgili kavramın kısa tanımı."
-  }
-]
+SORU KALİTESİ KURALLARI:
+1. Soruların en az %70'i "OLAY SORUSU" (Vaka analizi) formatında olmalıdır. (Örn: "A, B'ye şu tarihte şu vaatte bulunmuştur...")
+2. Analitik düşünme gerektiren, sadece ezberle çözülemeyecek, karmaşık hukuki ilişkileri sorgulayan sorular hazırla.
+3. Çeldirici şıklar (Distractors) çok kuvvetli olmalı; öğrenciyi gerçek sınavdaki gibi terletmelidir.
+4. Her sorunun "explanation" kısmında, o cevabın neden doğru olduğunu ilgili Kanun Maddesine (TMK, HMK, TCK vb.) atıf yaparak teknik bir dille açıkla.
+5. "topicSummary" kısmında, o soruyla ilgili unutulmaması gereken kritik "Hap Bilgi"yi yaz.
+
+TEKNİK FORMAT KURALLARI:
+- Cevabın YALNIZCA geçerli bir JSON array formatında olmalı. 
+- Asla başına veya sonuna markdown sembolleri (\`\`\`json) koyma. Sohbet kısımları ekleme.
+- JSON objesi şu anahtarları içermelidir: "subject", "question", "optA", "optB", "optC", "optD", "optE", "correct", "explanation", "topicSummary".
+
+Örnek Tek Bir Obje:
+{
+  "subject": "${subjectName}",
+  "question": "Vaka metni ve soru kökü...",
+  "optA": "...", "optB": "...", "optC": "...", "optD": "...", "optE": "...",
+  "correct": "C",
+  "explanation": "Doğru cevap C'dir çünkü... m. ... uyarınca...",
+  "topicSummary": "Kritik hukuk notu."
+}
 `;
 
     try {
-        console.log(`AI Bot: "${subjectName}" dersi için 5 soru yazıyor... Lütfen bekleyiniz.`);
+        console.log(`AI (1.5 Pro): "${subjectName}" dersi için ${requestedCount} adet akademik soru yazılıyor...`);
         
-        // using gemini-2.5-flash for speed, cost efficiency, and great reasoning
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-            config: {
-                temperature: 0.7,
+        const response = await ai.getGenerativeModel({ model: 'gemini-1.5-pro' }).generateContent({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: {
+                temperature: 0.8,
                 responseMimeType: "application/json"
             }
         });
-        let rawText = response.text;
         
-        // Güvenlik 1: Markdown kodlarını temizle
-        rawText = rawText.replace(/^```json/mi, '').replace(/```$/mi, '').replace(/```/g, '').trim();
+        let rawText = response.response.text();
         
-        // Güvenlik 2: Gemini'nin "İşte sorularınız:" gibi sohbet (chatter) kısımlarını atla ve köşeli parantezleri ayıkla
+        // Güvenlik: JSON dışındaki her şeyi ayıkla
         const firstBracket = rawText.indexOf('[');
         const lastBracket = rawText.lastIndexOf(']');
         if (firstBracket !== -1 && lastBracket !== -1) {
             rawText = rawText.substring(firstBracket, lastBracket + 1);
         }
 
-        // Güvenlik 3: Gemini 2.5 Flash çok akıllı olduğu için paragrafları enter (newline) ile ayırıyor.
-        // Ancak JSON stringi içinde raw (kaçışsız) \n veya \t karakteri olursa JSON.parse anında ÇÖKER (Bad Control Character).
-        // Bunu önlemek için rawText içindeki tüm alt satır ve sekmeleri boşluğa (space) dönüştürüp tek satır (flat) yapıyoruz.
+        // Güvenlik: Kontrol karakterlerini temizle (Bad control character hatası için)
         rawText = rawText.replace(/[\n\r\t]+/g, ' ').trim();
 
-        // Güvenlik 4: Bazı durumlarda Gemini içerideki tırnak işaretlerini kaçırmayı (escape) unutabiliyor.
-        // Çok karmaşık regex'ler yerine en temel temizliği yapıyoruz.
-        // Eğer JSON.parse doğrudan hata verirse, bir kez de tırnak temizliği deneriz.
         let questionsJson;
         try {
             questionsJson = JSON.parse(rawText);
         } catch (initialError) {
-            console.log("JSON Parse ilk deneme başarısız, temizlik yapılıyor...");
-            // Basit temizlik: property isimleri dışındaki şüpheli tırnakları ve fazla virgülleri temizleme denemesi
-            // Bu kısım riskli olduğu için sadece hata durumunda fallback olarak çalışır.
             try {
-                // Sadece en yaygın hatalar için basit bir tamir:
-                const cleanedText = rawText
-                    .replace(/,\s*]/g, ']') // Sona sarkan virgüller
-                    .replace(/,\s*}/g, '}'); // Sona sarkan virgüller
+                // Sona sarkan virgülleri temizleme denemesi
+                const cleanedText = rawText.replace(/,\s*]/g, ']').replace(/,\s*}/g, '}');
                 questionsJson = JSON.parse(cleanedText);
             } catch (secondError) {
-                throw new Error(`JSON Format Hatası: ${initialError.message}`);
+                throw new Error(`JSON Format Hatası (Temizlenemedi): ${initialError.message}`);
             }
         }
         
         if (!Array.isArray(questionsJson)) {
-            throw new Error("Üretilen veri bir dizi (array) formatında değil.");
+            throw new Error("Üretilen veri bir dizi formatında değil.");
         }
 
         const dbFormat = questionsJson.map(q => [
-            q.subject,
+            q.subject || subjectName,
             q.question,
             q.optA,
             q.optB,
@@ -103,10 +90,10 @@ Cevabın YALNIZCA geçerli bir JSON formatında olmalı. Asla başına veya sonu
             q.topicSummary
         ]);
         
-        console.log(`AI Bot: "${subjectName}" dersi için ${dbFormat.length} soru başarıyla üretildi ve formatlandı.`);
+        console.log(`AI BAŞARILI: "${subjectName}" için ${dbFormat.length} soru alındı.`);
         return dbFormat;
     } catch (error) {
-        throw new Error(`Gemini Hatası: ` + error.message);
+        throw new Error(`Gemini 1.5 Pro Hatası: ` + error.message);
     }
 }
 
