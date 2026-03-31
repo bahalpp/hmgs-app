@@ -1,4 +1,4 @@
-const { GoogleGenAI } = require('@google/generative-ai');
+const GoogleAI = require('@google/generative-ai');
 
 async function askAIForQuestions(subjectName, requestedCount = 25) {
     if (!process.env.GEMINI_API_KEY) {
@@ -6,8 +6,10 @@ async function askAIForQuestions(subjectName, requestedCount = 25) {
         return [];
     }
 
-    // RESMÎ SDK: GoogleGenAI kullanıyoruz
-    const genAI = new GoogleGenAI(process.env.GEMINI_API_KEY);
+    // RESMÎ SDK ÇAĞRISI (En Sağlam Yöntem):
+    // Bazı sürümlerde GoogleGenAI direkt, bazılarında ise bir alt özellik olarak gelir.
+    const GoogleGenAIClass = GoogleAI.GoogleGenAI || GoogleAI;
+    const genAI = new GoogleGenAIClass(process.env.GEMINI_API_KEY);
     
     const prompt = `
 Sen Türkiye HMGS (Hukuk Mesleklerine Giriş Sınavı) seviyesinde soru hazırlayan, ÖSYM mantığını bilen bir HUKUK PROFESÖRÜSÜN.
