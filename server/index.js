@@ -241,32 +241,36 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 let lastExecutionLog = "Arka plan AI motoru henüz çalıştırılmadı.";
 
 async function generateAllSubjectsQuestions(limit = subjects.length) {
-    console.log(`=== AI SORU ÜRETİM MOTORU AÇILDI (Sınır: ${limit}) ===`);
+    lastExecutionLog = `[${new Date().toISOString()}] AI Soru Üretim Motoru Başlatıldı. Toplam Ders: ${limit}\n`;
     let allNewQuestions = [];
-    let logMessages = [];
     
-    // Sadece limit kadar dersi döngüye al
     let processSubjects = subjects.slice(0, limit);
 
     for (const subject of processSubjects) {
+        lastExecutionLog += `[*] ${subject} için istek atılıyor...\n`;
         try {
             const newQs = await askAIForQuestions(subject);
             if (newQs && newQs.length > 0) {
                 allNewQuestions = allNewQuestions.concat(newQs);
-                logMessages.push(`[+] ${subject}: ${newQs.length} soru alındı.`);
+                lastExecutionLog += `  -> BAŞARILI: ${newQs.length} soru alındı.\n`;
             } else {
-                logMessages.push(`[-] ${subject}: 0 soru dondü (Muhtemel JSON Parse Hatası veya Rate Limit).`);
+                lastExecutionLog += `  -> BAŞARISIZ: 0 soru dondü (Muhtemel JSON Parse Hatası veya Rate Limit).\n`;
             }
         } catch(e) {
-            logMessages.push(`[ERROR] ${subject}: ${e.message}`);
+            lastExecutionLog += `  -> [KRİTİK HATA]: ${e.message}\n`;
         }
-        if (processSubjects.length > 1) await sleep(5000); // Tek ders girildiyse uyumaya gerek yok
+        if (processSubjects.length > 1) {
+            lastExecutionLog += `  -> Mola veriliyor (5 sn)...\n`;
+            await sleep(5000); // 15 RPM Google Limitine takılmamak için 5 saniye
+        }
     }
 
     if (allNewQuestions.length > 0) {
+        lastExecutionLog += `\n[${new Date().toISOString()}] Eski Havuz Siliniyor...\n`;
         await supabase.from('questions').delete().neq('id', 0);
         await supabase.from('weekly_exams').delete().neq('id', 0);
             
+        lastExecutionLog += `[${new Date().toISOString()}] Yeni üretilen ${allNewQuestions.length} soru Supabase'e enjekte ediliyor...\n`;
         const insertData = allNewQuestions.map(q => ({
             subject: q[0],
             question_text: q[1],
@@ -282,15 +286,12 @@ async function generateAllSubjectsQuestions(limit = subjects.length) {
 
         const { error: insertError } = await supabase.from('questions').insert(insertData);
         if (insertError) {
-             lastExecutionLog = `HATA! Veriler Supabase'e islenirken cöktü: ${insertError.message}`;
-             return lastExecutionLog;
+             lastExecutionLog += `[HATA] Veriler islenirken cöktü: ${insertError.message}\n`;
         } else {
-             lastExecutionLog = `BAŞARILI! ${allNewQuestions.length} yepyeni Supabase'e aktarıldı.\nLoglar:\n${logMessages.join('\n')}`;
-             return lastExecutionLog;
+             lastExecutionLog += `[MUTLU SON] Tüm süreç başarıyla bitti!\n`;
         }
     } else {
-        lastExecutionLog = `SIFIR SORU ÜRETİLDİ! Nedenler:\n${logMessages.join('\n')}`;
-        return lastExecutionLog;
+        lastExecutionLog += `\n[KÜLLİYEN HATA] SIFIR SORU ÜRETİLDİ! Süreç iptal edildi.\n`;
     }
 }
 
