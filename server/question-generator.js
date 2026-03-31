@@ -25,30 +25,23 @@ TEKNİK FORMAT KURALLARI:
 - Cevabın YALNIZCA geçerli bir JSON array formatında olmalı. 
 - Asla başına veya sonuna markdown sembolleri (\`\`\`json) koyma. Sohbet kısımları ekleme.
 - JSON objesi şu anahtarları içermelidir: "subject", "question", "optA", "optB", "optC", "optD", "optE", "correct", "explanation", "topicSummary".
-
-Örnek Tek Bir Obje:
-{
-  "subject": "${subjectName}",
-  "question": "Vaka metni ve soru kökü...",
-  "optA": "...", "optB": "...", "optC": "...", "optD": "...", "optE": "...",
-  "correct": "C",
-  "explanation": "Doğru cevap C'dir çünkü... m. ... uyarınca...",
-  "topicSummary": "Kritik hukuk notu."
-}
 `;
 
     try {
         console.log(`AI (1.5 Pro): "${subjectName}" dersi için ${requestedCount} adet akademik soru yazılıyor...`);
         
-        const response = await ai.getGenerativeModel({ model: 'gemini-1.5-pro' }).generateContent({
+        // Bu SDK sürümü için model seçimi bu şekilde yapılmalıdır:
+        const response = await ai.models.generateContent({
+            model: 'gemini-1.5-pro',
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: {
+            config: {
                 temperature: 0.8,
                 responseMimeType: "application/json"
             }
         });
         
-        let rawText = response.response.text();
+        // Gelen yanıtın içindeki metni alalım
+        let rawText = response.text;
         
         // Güvenlik: JSON dışındaki her şeyi ayıkla
         const firstBracket = rawText.indexOf('[');
@@ -57,7 +50,7 @@ TEKNİK FORMAT KURALLARI:
             rawText = rawText.substring(firstBracket, lastBracket + 1);
         }
 
-        // Güvenlik: Kontrol karakterlerini temizle (Bad control character hatası için)
+        // Güvenlik: Kontrol karakterlerini temizle
         rawText = rawText.replace(/[\n\r\t]+/g, ' ').trim();
 
         let questionsJson;
@@ -65,7 +58,6 @@ TEKNİK FORMAT KURALLARI:
             questionsJson = JSON.parse(rawText);
         } catch (initialError) {
             try {
-                // Sona sarkan virgülleri temizleme denemesi
                 const cleanedText = rawText.replace(/,\s*]/g, ']').replace(/,\s*}/g, '}');
                 questionsJson = JSON.parse(cleanedText);
             } catch (secondError) {
