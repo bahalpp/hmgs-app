@@ -270,11 +270,11 @@ async function generateAllSubjectsQuestions(limit = subjects.length) {
                 lastExecutionLog += `  -> [HATA]: ${subjectObj.name} dersinde sorun: ${e.message}\n`;
             }
 
-            // Gemini 1.5 Pro Ücretsiz Kotası: 2 RPM (Dakikada 2 İstek). 
-            // 35 saniye bekleyerek güvenli alanda kalıyoruz.
+            // Gemini 1.5 Flash Ücretsiz Kotası: 15 RPM. 
+            // 5 saniye beklemek yeterli ve çok daha hızlı.
             if (processSubjects.indexOf(subjectObj) < processSubjects.length - 1) {
-                lastExecutionLog += `  -> Profesör düşünüyor (35 sn mola)...\n`;
-                await sleep(35000); 
+                lastExecutionLog += `  -> Mola veriliyor (5 sn)...\n`;
+                await sleep(5000); 
             }
         }
 
