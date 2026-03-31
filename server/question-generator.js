@@ -48,8 +48,11 @@ Cevabın YALNIZCA geçerli bir JSON formatında olmalı. Asla başına veya sonu
                 responseMimeType: "application/json"
             }
         });
+        let rawText = response.text;
+        // Yapay zeka inatla başına ve sonuna markdown formatı fırlatırsa diye güvenlik şeridi:
+        rawText = rawText.replace(/^```json/mi, '').replace(/```$/mi, '').replace(/```/g, '').trim();
         
-        const rawText = response.text;
+        // JSON parse işleminde patlamaması için ekstra boşluk temizliği
         const questionsJson = JSON.parse(rawText);
         
         const dbFormat = questionsJson.map(q => [
