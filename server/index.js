@@ -288,8 +288,8 @@ cron.schedule('0 3 * * 0', async () => {
 });
 
 // 2. MANUEL (KULLANICI) SİSTEMİ: Admin butona basarsa arka planda 500 soru üretir.
-app.post('/api/admin/generate-questions', async (req, res) => {
-    const adminPassword = req.body.password;
+app.all('/api/admin/generate-questions', async (req, res) => {
+    const adminPassword = req.body.password || req.query.password;
     if (adminPassword !== 'avuka2026') return res.status(401).json({ error: "Geçersiz şifre" });
     
     // Geriye hiçbir şey sormadan direkt kopar git
