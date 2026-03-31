@@ -49,9 +49,17 @@ Cevabın YALNIZCA geçerli bir JSON formatında olmalı. Asla başına veya sonu
             }
         });
         let rawText = response.text;
-        // Yapay zeka inatla başına ve sonuna markdown formatı fırlatırsa diye güvenlik şeridi:
+        
+        // Güvenlik 1: Markdown kodlarını temizle
         rawText = rawText.replace(/^```json/mi, '').replace(/```$/mi, '').replace(/```/g, '').trim();
         
+        // Güvenlik 2: Gemini'nin "İşte sorularınız:" gibi sohbet (chatter) kısımlarını atla ve köşeli parantezleri ayıkla
+        const firstBracket = rawText.indexOf('[');
+        const lastBracket = rawText.lastIndexOf(']');
+        if (firstBracket !== -1 && lastBracket !== -1) {
+            rawText = rawText.substring(firstBracket, lastBracket + 1);
+        }
+
         // JSON parse işleminde patlamaması için ekstra boşluk temizliği
         const questionsJson = JSON.parse(rawText);
         
@@ -71,8 +79,7 @@ Cevabın YALNIZCA geçerli bir JSON formatında olmalı. Asla başına veya sonu
         console.log(`AI Bot: "${subjectName}" dersi için ${dbFormat.length} soru başarıyla üretildi ve formatlandı.`);
         return dbFormat;
     } catch (error) {
-        console.error(`AI Bot: "${subjectName}" için soru üretirken bir hata oluştu:`, error.message);
-        return [];
+        throw new Error(`Gemini Hatası: ` + error.message);
     }
 }
 
