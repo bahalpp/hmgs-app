@@ -60,6 +60,11 @@ Cevabın YALNIZCA geçerli bir JSON formatında olmalı. Asla başına veya sonu
             rawText = rawText.substring(firstBracket, lastBracket + 1);
         }
 
+        // Güvenlik 3: Gemini 2.5 Flash çok akıllı olduğu için paragrafları enter (newline) ile ayırıyor.
+        // Ancak JSON stringi içinde raw (kaçışsız) \n veya \t karakteri olursa JSON.parse anında ÇÖKER (Bad Control Character).
+        // Bunu önlemek için rawText içindeki tüm alt satır ve sekmeleri boşluğa (space) dönüştürüp tek satır (flat) yapıyoruz.
+        rawText = rawText.replace(/[\n\r\t]+/g, ' ');
+
         // JSON parse işleminde patlamaması için ekstra boşluk temizliği
         const questionsJson = JSON.parse(rawText);
         
