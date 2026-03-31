@@ -295,22 +295,19 @@ cron.schedule('0 3 * * 0', async () => {
     await generateAllSubjectsQuestions();
 });
 
-// 2. MANUEL (KULLANICI) SİSTEMİ: Admin butona basarsa soru üretir ve sonucu döner. (?limit=1 gibi eklenirse hızlı çalışır)
-app.all('/api/admin/generate-questions', async (req, res) => {
+// 2. MANUEL (KULLANICI) SİSTEMİ: Admin butona basarsa soru üretir ve sonucu arkadan işler.
+app.all('/api/admin/generate-questions', (req, res) => {
     const adminPassword = req.body?.password || req.query?.password;
     if (adminPassword !== 'avuka2026') return res.status(401).json({ error: "Geçersiz şifre" });
     
     let limit = subjects.length;
     if (req.query.limit) limit = parseInt(req.query.limit);
 
-    // Geriye sormadan asenkron devam etmek yerine bekleyip analizini göreceğiz.
-    try {
-        const resultLog = await generateAllSubjectsQuestions(limit);
-        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-        res.send(resultLog);
-    } catch(e) {
-        res.status(500).send("Beklenmeyen Motor Hatası: " + e.message);
-    }
+    // Render'ın 2 dakikalık Time-out sınırına takılmamak için işlemi arka plana atıp hemen yanıt dönüyoruz.
+    generateAllSubjectsQuestions(limit).catch(e => console.error(e));
+    
+    const countMsg = limit < subjects.length ? limit : subjects.length;
+    res.json({ message: `Sistem başarıyla tetiklendi! Toplam ${countMsg} ders için arka planda Yapay Zeka üretimi başladı. Yaklaşık 3-4 dakika sürecektir. İşlem bitince soru havuzu tamamen yenilenecektir.` });
 });
 
 app.listen(PORT, () => {
