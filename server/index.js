@@ -241,23 +241,27 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function generateAllSubjectsQuestions() {
     console.log("=== AI SORU ÜRETİM MOTORU (SUPABASE) BAŞLADI ===");
     let allNewQuestions = [];
+    let logMessages = [];
     
     for (const subject of subjects) {
-        const newQs = await askAIForQuestions(subject); // Gemini 25 Soru Çeker
-        if (newQs && newQs.length > 0) {
-            allNewQuestions = allNewQuestions.concat(newQs);
-            console.log(`[+] ${subject} için ${newQs.length} soru yapay zeka hafızasına alındı.`);
+        try {
+            const newQs = await askAIForQuestions(subject);
+            if (newQs && newQs.length > 0) {
+                allNewQuestions = allNewQuestions.concat(newQs);
+                logMessages.push(`[+] ${subject}: ${newQs.length} soru alındı.`);
+            } else {
+                logMessages.push(`[-] ${subject}: 0 soru dondü (Muhtemel JSON Parse Hatası veya Rate Limit).`);
+            }
+        } catch(e) {
+            logMessages.push(`[ERROR] ${subject}: ${e.message}`);
         }
-        await sleep(4000); // Mola
+        await sleep(5000); // 5 saniye (15 RPM Google Limitine yakalanmamak için biraz daha yavaş).
     }
 
     if (allNewQuestions.length > 0) {
-        console.log("Supabase üzerinden eski sorular ve denemeler imha ediliyor...");
-        // Tüm eski soru havuzunu komple silip yeni jenerasyonu kur
         await supabase.from('questions').delete().neq('id', 0);
         await supabase.from('weekly_exams').delete().neq('id', 0);
             
-        console.log("Supabase'e yepyeni sorular zerk ediliyor...");
         const insertData = allNewQuestions.map(q => ({
             subject: q[0],
             question_text: q[1],
@@ -271,13 +275,14 @@ async function generateAllSubjectsQuestions() {
             topic_summary: q[9]
         }));
 
-        // Insert in bulk chunks if needed, but 500 should pass comfortably in Supabase.
         const { error: insertError } = await supabase.from('questions').insert(insertData);
         if (insertError) {
-             console.error("AI Soru Motoru Supabase Kayıt Hatası:", insertError.message);
+             return `HATA! Veriler Supabase'e islenirken cöktü: ${insertError.message}`;
         } else {
-             console.log(`=== BAŞARILI: Eskiler imha edildi, ${allNewQuestions.length} yepyeni soru sisteme başarıyla kazındı! ===`);
+             return `BAŞARILI! ${allNewQuestions.length} yepyeni Supabase'e aktarıldı.\nLoglar:\n${logMessages.join('\n')}`;
         }
+    } else {
+        return `SIFIR SORU ÜRETİLDİ! Tüm derslerden 0 döndü. Nedenler:\n${logMessages.join('\n')}`;
     }
 }
 
@@ -287,14 +292,19 @@ cron.schedule('0 3 * * 0', async () => {
     await generateAllSubjectsQuestions();
 });
 
-// 2. MANUEL (KULLANICI) SİSTEMİ: Admin butona basarsa arka planda 500 soru üretir.
+// 2. MANUEL (KULLANICI) SİSTEMİ: Admin butona basarsa 500 soru üretir ve sonucu döner.
 app.all('/api/admin/generate-questions', async (req, res) => {
-    const adminPassword = req.body.password || req.query.password;
+    const adminPassword = req.body?.password || req.query?.password;
     if (adminPassword !== 'avuka2026') return res.status(401).json({ error: "Geçersiz şifre" });
     
-    // Geriye hiçbir şey sormadan direkt kopar git
-    generateAllSubjectsQuestions().catch(e => console.error(e));
-    res.json({ message: "Supabase Bulutunda Yapay Zeka Soru Üretimine arka planda başlandı. Yaklaşık 1-2 dakika sürecektir. İşlem bitince soru havuzu baştan aşağı yenilenecektir." });
+    // Geriye sormadan asenkron devam etmek yerine bekleyip analizini göreceğiz.
+    try {
+        const resultLog = await generateAllSubjectsQuestions();
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.send(resultLog);
+    } catch(e) {
+        res.status(500).send("Beklenmeyen Motor Hatası: " + e.message);
+    }
 });
 
 app.listen(PORT, () => {
