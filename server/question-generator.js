@@ -39,9 +39,9 @@ Cevabın YALNIZCA geçerli bir JSON formatında olmalı. Asla başına veya sonu
     try {
         console.log(`AI Bot: "${subjectName}" dersi için 5 soru yazıyor... Lütfen bekleyiniz.`);
         
-        // using gemini-2.5-flash for speed, cost efficiency, and great reasoning
+        // using gemini-1.5-flash for massive 1500 daily requests free quota
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-1.5-flash',
             contents: prompt,
             config: {
                 temperature: 0.7,
