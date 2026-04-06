@@ -24,21 +24,38 @@ TEKNİK FORMAT KURALLARI:
     try {
         console.log(`AI (Gemini 2.5 Flash API): "${subjectName}" için sorular yazılıyor...`);
         
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{ role: "user", parts: [{ text: prompt }] }],
-                generationConfig: { temperature: 0.8 }
-            })
+        const https = require('https');
+
+        const payload = JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.8 }
         });
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`API Hatası (Durum ${response.status}): ${errorText}`);
+        const url = new URL(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`);
+
+        const responseData = await new Promise((resolve, reject) => {
+            const req = https.request(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(payload)
+                }
+            }, (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => resolve({ status: res.statusCode, data }));
+            });
+
+            req.on('error', (e) => reject(e));
+            req.write(payload);
+            req.end();
+        });
+
+        if (responseData.status !== 200) {
+            throw new Error(`API Hatası (Durum ${responseData.status}): ${responseData.data}`);
         }
 
-        const data = await response.json();
+        const data = JSON.parse(responseData.data);
         if (!data.candidates || data.candidates.length === 0) {
             throw new Error("API boş yanıt döndürdü.");
         }
