@@ -1,4 +1,4 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleGenAI } = require('@google/genai');
 
 async function askAIForQuestions(subjectName, requestedCount = 25) {
     if (!process.env.GEMINI_API_KEY) {
@@ -6,9 +6,7 @@ async function askAIForQuestions(subjectName, requestedCount = 25) {
         return [];
     }
 
-    // RESMÎ SDK ÇAĞRISI (%100 DOĞRU İSİM):
-    // Az önce debug-sdk.js ile doğrulandı: Sınıf ismi 'GoogleGenerativeAI' olmalıdır.
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     
     const prompt = `
 Sen Türkiye HMGS (Hukuk Mesleklerine Giriş Sınavı) seviyesinde soru hazırlayan, ÖSYM mantığını bilen bir HUKUK PROFESÖRÜSÜN.
@@ -28,20 +26,17 @@ TEKNİK FORMAT KURALLARI:
 `;
 
     try {
-        console.log(`AI (Final Stabilization Mod): "${subjectName}" için sorular yazılıyor...`);
+        console.log(`AI (Gemini 2.5 Flash): "${subjectName}" için sorular yazılıyor...`);
         
-        // EN TEMEL KOMUT: Suffix yok, Beta zorlaması yok. SDK kendi yolunu bulsun.
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-        
-        const result = await model.generateContent({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+            config: {
                 temperature: 0.8
             }
         });
         
-        const response = await result.response;
-        let rawText = response.text();
+        let rawText = response.text;
         
         // Güvenlik: JSON dışındaki her şeyi ayıkla
         const firstBracket = rawText.indexOf('[');
@@ -68,7 +63,7 @@ TEKNİK FORMAT KURALLARI:
             q.correct, q.explanation, q.topicSummary
         ]);
     } catch (error) {
-        throw new Error(`Resmî Google SDK Hatası: ` + error.message);
+        throw new Error(`Google GenAI SDK Hatası: ` + error.message);
     }
 }
 
