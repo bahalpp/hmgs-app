@@ -1,13 +1,9 @@
-const { GoogleGenAI } = require('@google/genai');
-
 async function askAIForQuestions(subjectName, requestedCount = 25) {
     if (!process.env.GEMINI_API_KEY) {
         console.error("GEMINI_API_KEY eksik! Üretim atlanıyor...");
         return [];
     }
 
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    
     const prompt = `
 Sen Türkiye HMGS (Hukuk Mesleklerine Giriş Sınavı) seviyesinde soru hazırlayan, ÖSYM mantığını bilen bir HUKUK PROFESÖRÜSÜN.
 Ders: "${subjectName}". 
@@ -26,17 +22,28 @@ TEKNİK FORMAT KURALLARI:
 `;
 
     try {
-        console.log(`AI (Gemini 2.5 Flash): "${subjectName}" için sorular yazılıyor...`);
+        console.log(`AI (Gemini 2.5 Flash API): "${subjectName}" için sorular yazılıyor...`);
         
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: prompt,
-            config: {
-                temperature: 0.8
-            }
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ role: "user", parts: [{ text: prompt }] }],
+                generationConfig: { temperature: 0.8 }
+            })
         });
-        
-        let rawText = response.text;
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`API Hatası (Durum ${response.status}): ${errorText}`);
+        }
+
+        const data = await response.json();
+        if (!data.candidates || data.candidates.length === 0) {
+            throw new Error("API boş yanıt döndürdü.");
+        }
+
+        let rawText = data.candidates[0].content.parts[0].text;
         
         // Güvenlik: JSON dışındaki her şeyi ayıkla
         const firstBracket = rawText.indexOf('[');
@@ -63,7 +70,7 @@ TEKNİK FORMAT KURALLARI:
             q.correct, q.explanation, q.topicSummary
         ]);
     } catch (error) {
-        throw new Error(`Google GenAI SDK Hatası: ` + error.message);
+        throw new Error(`Manuel Fetch Hatası: ` + error.message);
     }
 }
 
