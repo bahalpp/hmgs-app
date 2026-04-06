@@ -1,108 +1,123 @@
-async function askAIForQuestions(subjectName, requestedCount = 25) {
+const https = require('https');
+
+/**
+ * Gemini API'ye HTTPS isteği atar ve yanıtı döndürür.
+ * Node.js dahili https modülü kullanır (fetch/SDK sorunlarından bağımsız).
+ */
+function geminiRequest(payload, apiKey) {
+    return new Promise((resolve, reject) => {
+        const body = JSON.stringify(payload);
+        const url = new URL(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`);
+
+        const req = https.request(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(body)
+            }
+        }, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+                if (res.statusCode !== 200) {
+                    return reject(new Error(`API ${res.statusCode}: ${data.substring(0, 300)}`));
+                }
+                resolve(data);
+            });
+        });
+
+        req.setTimeout(120000, () => { req.destroy(); reject(new Error('API zaman aşımı (120sn)')); });
+        req.on('error', (e) => reject(new Error(`Bağlantı hatası: ${e.message}`)));
+        req.write(body);
+        req.end();
+    });
+}
+
+/**
+ * Ham API yanıtından JSON dizisini güvenli şekilde çıkarır.
+ * - Markdown ```json bloklarını temizler
+ * - Sohbet metinlerini atlar
+ * - Yarıda kesilmiş JSON'ı onarır (Kurtarma Modu)
+ */
+function extractJSON(rawText) {
+    // 1) Markdown code fence temizliği
+    let text = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '');
+
+    // 2) JSON dizisinin başlangıcını bul
+    const firstBracket = text.indexOf('[');
+    if (firstBracket === -1) throw new Error('Yanıtta JSON dizisi bulunamadı');
+
+    const lastBracket = text.lastIndexOf(']');
+
+    if (lastBracket !== -1 && lastBracket > firstBracket) {
+        // Normal durum: tam JSON
+        text = text.substring(firstBracket, lastBracket + 1);
+    } else {
+        // Kurtarma Modu: Yarıda kesilmiş JSON'ı onar
+        const lastBrace = text.lastIndexOf('}');
+        if (lastBrace !== -1 && lastBrace > firstBracket) {
+            text = text.substring(firstBracket, lastBrace + 1) + ']';
+            console.log('[KURTARMA]: Yarım kalan JSON onarıldı.');
+        } else {
+            throw new Error('JSON onarılamadı');
+        }
+    }
+
+    // 3) Kontrol karakterleri ve trailing comma temizliği
+    text = text.replace(/[\n\r\t]+/g, ' ').trim();
+    text = text.replace(/,\s*]/g, ']').replace(/,\s*}/g, '}');
+
+    return JSON.parse(text);
+}
+
+async function askAIForQuestions(subjectName, requestedCount = 15) {
     if (!process.env.GEMINI_API_KEY) {
-        console.error("GEMINI_API_KEY eksik! Üretim atlanıyor...");
+        console.error('GEMINI_API_KEY eksik!');
         return [];
     }
 
-    const prompt = `
-Sen Türkiye HMGS (Hukuk Mesleklerine Giriş Sınavı) seviyesinde soru hazırlayan, ÖSYM mantığını bilen bir HUKUK PROFESÖRÜSÜN.
-Ders: "${subjectName}". 
+    console.log(`AI: "${subjectName}" için ${requestedCount} soru isteniyor...`);
 
-SENDEN İSTENEN: Bu ders konusu üzerine tam olarak ${requestedCount} adet çoktan seçmeli (A, B, C, D, E) soru oluştur. LÜTFEN ${requestedCount} ADEDİ AŞMA (Yazı sınırına takılmamak için).
+    const payload = {
+        contents: [{
+            role: 'user',
+            parts: [{ text: `Sen HMGS sınav sorusu üreten bir hukuk AI'ısın.
+Ders: "${subjectName}"
+${requestedCount} adet çoktan seçmeli soru üret.
 
-SORU KALİTESİ KURALLARI:
-1. Soruların en az %70'i "OLAY SORUSU" (Vaka analizi) formatında olmalıdır.
-2. Analitik düşünme gerektiren, ÖSYM zorluğunda hukuk soruları hazırla.
-3. "explanation" kısmında cevabın neden doğru olduğunu ilgili Kanun Maddesiyle teknik dille açıkla.
-4. "topicSummary" kısmında, o soruyla ilgili kritik "Hap Bilgi"yi yaz.
+Kurallar:
+- %70'i olay sorusu olsun
+- ÖSYM zorluğunda olsun
+- explanation: doğru cevabın ilgili Kanun Maddesiyle açıklaması
+- topicSummary: kısa hap bilgi
 
-TEKNİK FORMAT KURALLARI (ÇOK ÖNEMLİ):
-- Çıktın "Harika", "İşte sorular" gibi muhabbet kelimeleri İÇERMEMELİDİR.
-- Doğrudan '[' ile başlayan ve ']' ile biten SAF JSON dizisi döndür.
-- JSON objesi şu anahtarları içermeli: "subject", "question", "optA", "optB", "optC", "optD", "optE", "correct", "explanation", "topicSummary".
-`;
-
-    try {
-        console.log(`AI (Gemini 2.5 Flash API): "${subjectName}" için sorular yazılıyor...`);
-        
-        const https = require('https');
-
-        const payload = JSON.stringify({
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.8 }
-        });
-
-        const url = new URL(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`);
-
-        const responseData = await new Promise((resolve, reject) => {
-            const req = https.request(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Content-Length': Buffer.byteLength(payload)
-                }
-            }, (res) => {
-                let data = '';
-                res.on('data', chunk => data += chunk);
-                res.on('end', () => resolve({ status: res.statusCode, data }));
-            });
-
-            req.on('error', (e) => reject(e));
-            req.write(payload);
-            req.end();
-        });
-
-        if (responseData.status !== 200) {
-            throw new Error(`API Hatası (Durum ${responseData.status}): ${responseData.data}`);
+SADECE JSON dizisi döndür, başka hiçbir şey yazma.
+Her obje: {"subject","question","optA","optB","optC","optD","optE","correct","explanation","topicSummary"}` }]
+        }],
+        generationConfig: {
+            temperature: 0.8,
+            responseMimeType: 'application/json'
         }
+    };
 
-        const data = JSON.parse(responseData.data);
-        if (!data.candidates || data.candidates.length === 0) {
-            throw new Error("API boş yanıt döndürdü.");
-        }
+    const raw = await geminiRequest(payload, process.env.GEMINI_API_KEY);
+    const apiResponse = JSON.parse(raw);
 
-        let rawText = data.candidates[0].content.parts[0].text;
-        
-        // HATA TOLERANSI (FAULT TOLERANCE) - Eğer API yarıda kesildiyse JSON'ı kurtar
-        const firstBracket = rawText.indexOf('[');
-        const lastBracket = rawText.lastIndexOf(']');
-        
-        if (firstBracket !== -1) {
-            if (lastBracket === -1 || lastBracket < firstBracket) {
-                // Metin yarıda kesilmiş (Token limiti). En son bitmiş '}' süslü parantezi bulup kapat!
-                const lastBrace = rawText.lastIndexOf('}');
-                if (lastBrace !== -1 && lastBrace > firstBracket) {
-                    rawText = rawText.substring(firstBracket, lastBrace + 1) + "\n]";
-                } else {
-                    rawText = rawText.substring(firstBracket) + "\n]";
-                }
-                console.log(`[UYARI]: API metni yarıda kesti, Json onarıldı (Kurtarma Modu Aktif).`);
-            } else {
-                // Normal sorunsuz kesim
-                rawText = rawText.substring(firstBracket, lastBracket + 1);
-            }
-        }
-
-        // Kontrol karakterlerini temizle
-        rawText = rawText.replace(/[\n\r\t]+/g, ' ').trim();
-
-        let questionsJson;
-        try {
-            questionsJson = JSON.parse(rawText);
-        } catch (e) {
-            const cleanedText = rawText.replace(/,\s*]/g, ']').replace(/,\s*}/g, '}');
-            questionsJson = JSON.parse(cleanedText);
-        }
-        
-        if (!Array.isArray(questionsJson)) throw new Error("Format hatası.");
-
-        return questionsJson.map(q => [
-            q.subject || subjectName, q.question, q.optA, q.optB, q.optC, q.optD, q.optE,
-            q.correct, q.explanation, q.topicSummary
-        ]);
-    } catch (error) {
-        throw new Error(`Manuel Fetch Hatası: ` + error.message);
+    if (!apiResponse.candidates?.[0]?.content?.parts?.[0]?.text) {
+        throw new Error('API boş/geçersiz yanıt döndürdü');
     }
+
+    const questions = extractJSON(apiResponse.candidates[0].content.parts[0].text);
+
+    if (!Array.isArray(questions) || questions.length === 0) {
+        throw new Error('Soru dizisi boş veya geçersiz');
+    }
+
+    return questions.map(q => [
+        q.subject || subjectName,
+        q.question, q.optA, q.optB, q.optC, q.optD, q.optE,
+        q.correct, q.explanation, q.topicSummary
+    ]);
 }
 
 module.exports = { askAIForQuestions };

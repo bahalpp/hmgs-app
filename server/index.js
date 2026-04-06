@@ -262,7 +262,7 @@ async function generateAllSubjectsQuestions(limit = subjects.length) {
             let subjectFailures = 0;
 
             while (remainingQuestions > 0 && subjectFailures < 3) {
-                const batchCount = Math.min(remainingQuestions, 25);
+                const batchCount = Math.min(remainingQuestions, 15);
                 lastExecutionLog += `  -> Alt-parti isteği: ${batchCount} soru talep ediliyor (Kalan: ${remainingQuestions})...\n`;
 
                 try {
