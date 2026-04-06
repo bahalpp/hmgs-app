@@ -248,7 +248,7 @@ async function generateAllSubjectsQuestions(limit = subjects.length) {
     }
     
     isGenerating = true;
-    lastExecutionLog = `[${new Date().toISOString()}] AI Soru Üretim Motoru Başlatıldı (1.5 Pro Modu). Hedef: 5 Deneme Sınavı x 120 Soru\n`;
+    lastExecutionLog = `[${new Date().toISOString()}] AI Soru Üretim Motoru Başlatıldı (Gemini 2.5 Flash). Hedef: 5 Deneme Sınavı x 120 Soru\n`;
     let allNewQuestions = [];
     
     try {
