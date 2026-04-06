@@ -8,17 +8,18 @@ async function askAIForQuestions(subjectName, requestedCount = 25) {
 Sen Türkiye HMGS (Hukuk Mesleklerine Giriş Sınavı) seviyesinde soru hazırlayan, ÖSYM mantığını bilen bir HUKUK PROFESÖRÜSÜN.
 Ders: "${subjectName}". 
 
-SENDEN İSTENEN: Bu ders konusu üzerine tam olarak ${requestedCount} adet, birbirinden farklı, özgün ve yüksek kaliteli çoktan seçmeli (A, B, C, D, E) soru oluşturman.
+SENDEN İSTENEN: Bu ders konusu üzerine tam olarak ${requestedCount} adet çoktan seçmeli (A, B, C, D, E) soru oluştur. LÜTFEN ${requestedCount} ADEDİ AŞMA (Yazı sınırına takılmamak için).
 
 SORU KALİTESİ KURALLARI:
 1. Soruların en az %70'i "OLAY SORUSU" (Vaka analizi) formatında olmalıdır.
 2. Analitik düşünme gerektiren, ÖSYM zorluğunda hukuk soruları hazırla.
-3. Her sorunun "explanation" kısmında, o cevabın neden doğru olduğunu ilgili Kanun Maddesiyle teknik bir dille açıkla.
-4. "topicSummary" kısmında, o soruyla ilgili unutulmaması gereken kritik "Hap Bilgi"yi yaz.
+3. "explanation" kısmında cevabın neden doğru olduğunu ilgili Kanun Maddesiyle teknik dille açıkla.
+4. "topicSummary" kısmında, o soruyla ilgili kritik "Hap Bilgi"yi yaz.
 
-TEKNİK FORMAT KURALLARI:
-- Cevabın YALNIZCA geçerli bir JSON array formatında olmalı. 
-- JSON objesi şu anahtarları içermelidir: "subject", "question", "optA", "optB", "optC", "optD", "optE", "correct", "explanation", "topicSummary".
+TEKNİK FORMAT KURALLARI (ÇOK ÖNEMLİ):
+- Çıktın "Harika", "İşte sorular" gibi muhabbet kelimeleri İÇERMEMELİDİR.
+- Doğrudan '[' ile başlayan ve ']' ile biten SAF JSON dizisi döndür.
+- JSON objesi şu anahtarları içermeli: "subject", "question", "optA", "optB", "optC", "optD", "optE", "correct", "explanation", "topicSummary".
 `;
 
     try {
@@ -62,11 +63,24 @@ TEKNİK FORMAT KURALLARI:
 
         let rawText = data.candidates[0].content.parts[0].text;
         
-        // Güvenlik: JSON dışındaki her şeyi ayıkla
+        // HATA TOLERANSI (FAULT TOLERANCE) - Eğer API yarıda kesildiyse JSON'ı kurtar
         const firstBracket = rawText.indexOf('[');
         const lastBracket = rawText.lastIndexOf(']');
-        if (firstBracket !== -1 && lastBracket !== -1) {
-            rawText = rawText.substring(firstBracket, lastBracket + 1);
+        
+        if (firstBracket !== -1) {
+            if (lastBracket === -1 || lastBracket < firstBracket) {
+                // Metin yarıda kesilmiş (Token limiti). En son bitmiş '}' süslü parantezi bulup kapat!
+                const lastBrace = rawText.lastIndexOf('}');
+                if (lastBrace !== -1 && lastBrace > firstBracket) {
+                    rawText = rawText.substring(firstBracket, lastBrace + 1) + "\n]";
+                } else {
+                    rawText = rawText.substring(firstBracket) + "\n]";
+                }
+                console.log(`[UYARI]: API metni yarıda kesti, Json onarıldı (Kurtarma Modu Aktif).`);
+            } else {
+                // Normal sorunsuz kesim
+                rawText = rawText.substring(firstBracket, lastBracket + 1);
+            }
         }
 
         // Kontrol karakterlerini temizle
