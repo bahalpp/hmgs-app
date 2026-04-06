@@ -255,26 +255,40 @@ async function generateAllSubjectsQuestions(limit = subjects.length) {
         let processSubjects = subjects.slice(0, limit);
 
         for (const subjectObj of processSubjects) {
-            const requestedCount = subjectObj.countPerExam * 5; // 5 Deneme için toplam soru
-            lastExecutionLog += `[*] ${subjectObj.name} için ${requestedCount} akademik soru isteniyor...\n`;
+            const totalRequestedCount = subjectObj.countPerExam * 5; // 5 Deneme için toplam soru
+            lastExecutionLog += `[*] ${subjectObj.name} için toplam ${totalRequestedCount} akademik soru parçalar halinde isteniyor...\n`;
             
-            try {
-                const newQs = await askAIForQuestions(subjectObj.name, requestedCount);
-                if (newQs && newQs.length > 0) {
-                    allNewQuestions = allNewQuestions.concat(newQs);
-                    lastExecutionLog += `  -> BAŞARILI: ${newQs.length} soru alındı.\n`;
-                } else {
-                    lastExecutionLog += `  -> BAŞARISIZ: 0 soru döndü.\n`;
+            let remainingQuestions = totalRequestedCount;
+            let subjectFailures = 0;
+
+            while (remainingQuestions > 0 && subjectFailures < 3) {
+                const batchCount = Math.min(remainingQuestions, 25);
+                lastExecutionLog += `  -> Alt-parti isteği: ${batchCount} soru talep ediliyor (Kalan: ${remainingQuestions})...\n`;
+
+                try {
+                    const newQs = await askAIForQuestions(subjectObj.name, batchCount);
+                    if (newQs && newQs.length > 0) {
+                        allNewQuestions = allNewQuestions.concat(newQs);
+                        remainingQuestions -= newQs.length;
+                        lastExecutionLog += `    -> BAŞARILI: ${newQs.length} soru alındı.\n`;
+                    } else {
+                        lastExecutionLog += `    -> [UYARI]: Soru dönmedi, parti atlanıyor...\n`;
+                        subjectFailures++;
+                    }
+                } catch(e) {
+                    lastExecutionLog += `    -> [HATA]: Parça üretiminde sorun: ${e.message}\n`;
+                    subjectFailures++;
                 }
-            } catch(e) {
-                lastExecutionLog += `  -> [HATA]: ${subjectObj.name} dersinde sorun: ${e.message}\n`;
+
+                // Gemini Rate Limit ve stabilitesini korumak için her sorgu arasına 8 saniye mola
+                if (remainingQuestions > 0 || processSubjects.indexOf(subjectObj) < processSubjects.length - 1) {
+                    lastExecutionLog += `    -> Mola veriliyor (8 sn)...\n`;
+                    await sleep(8000); 
+                }
             }
 
-            // Gemini 1.5 Flash Ücretsiz Kotası: 15 RPM. 
-            // 5 saniye beklemek yeterli ve çok daha hızlı.
-            if (processSubjects.indexOf(subjectObj) < processSubjects.length - 1) {
-                lastExecutionLog += `  -> Mola veriliyor (5 sn)...\n`;
-                await sleep(5000); 
+            if (subjectFailures >= 3) {
+                lastExecutionLog += `  -> DİKKAT: ${subjectObj.name} dersinde art arda 3 hata alındı. Diğer derse geçiliyor...\n`;
             }
         }
 
