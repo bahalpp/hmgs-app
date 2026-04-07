@@ -1,8 +1,8 @@
 const https = require('https');
 
 /**
- * Gemini API'ye HTTPS isteği atar ve yanıtı döndürür.
- * Node.js dahili https modülü kullanır (fetch/SDK sorunlarından bağımsız).
+ * Gemini API'ye HTTPS isteği atar.
+ * apiKey parametresi ile hangi key'in kullanılacağı belirlenir.
  */
 function geminiRequest(payload, apiKey) {
     return new Promise((resolve, reject) => {
@@ -26,7 +26,7 @@ function geminiRequest(payload, apiKey) {
             });
         });
 
-        req.setTimeout(120000, () => { req.destroy(); reject(new Error('API zaman aşımı (120sn)')); });
+        req.setTimeout(180000, () => { req.destroy(); reject(new Error('API zaman aşımı (180sn)')); });
         req.on('error', (e) => reject(new Error(`Bağlantı hatası: ${e.message}`)));
         req.write(body);
         req.end();
@@ -35,25 +35,18 @@ function geminiRequest(payload, apiKey) {
 
 /**
  * Ham API yanıtından JSON dizisini güvenli şekilde çıkarır.
- * - Markdown ```json bloklarını temizler
- * - Sohbet metinlerini atlar
- * - Yarıda kesilmiş JSON'ı onarır (Kurtarma Modu)
  */
 function extractJSON(rawText) {
-    // 1) Markdown code fence temizliği
     let text = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '');
 
-    // 2) JSON dizisinin başlangıcını bul
     const firstBracket = text.indexOf('[');
     if (firstBracket === -1) throw new Error('Yanıtta JSON dizisi bulunamadı');
 
     const lastBracket = text.lastIndexOf(']');
 
     if (lastBracket !== -1 && lastBracket > firstBracket) {
-        // Normal durum: tam JSON
         text = text.substring(firstBracket, lastBracket + 1);
     } else {
-        // Kurtarma Modu: Yarıda kesilmiş JSON'ı onar
         const lastBrace = text.lastIndexOf('}');
         if (lastBrace !== -1 && lastBrace > firstBracket) {
             text = text.substring(firstBracket, lastBrace + 1) + ']';
@@ -63,20 +56,22 @@ function extractJSON(rawText) {
         }
     }
 
-    // 3) Kontrol karakterleri ve trailing comma temizliği
     text = text.replace(/[\n\r\t]+/g, ' ').trim();
     text = text.replace(/,\s*]/g, ']').replace(/,\s*}/g, '}');
 
     return JSON.parse(text);
 }
 
-async function askAIForQuestions(subjectName, requestedCount = 15) {
-    if (!process.env.GEMINI_API_KEY) {
-        console.error('GEMINI_API_KEY eksik!');
-        return [];
+/**
+ * Belirli bir ders için belirli sayıda soru üretir.
+ * @param {string} subjectName - Ders adı
+ * @param {number} requestedCount - İstenen soru sayısı
+ * @param {string} apiKey - Kullanılacak Gemini API key
+ */
+async function askAIForQuestions(subjectName, requestedCount, apiKey) {
+    if (!apiKey) {
+        throw new Error('API key eksik!');
     }
-
-    console.log(`AI: "${subjectName}" için ${requestedCount} soru isteniyor...`);
 
     const payload = {
         contents: [{
@@ -100,7 +95,7 @@ Her obje: {"subject","question","optA","optB","optC","optD","optE","correct","ex
         }
     };
 
-    const raw = await geminiRequest(payload, process.env.GEMINI_API_KEY);
+    const raw = await geminiRequest(payload, apiKey);
     const apiResponse = JSON.parse(raw);
 
     if (!apiResponse.candidates?.[0]?.content?.parts?.[0]?.text) {
@@ -113,11 +108,18 @@ Her obje: {"subject","question","optA","optB","optC","optD","optE","correct","ex
         throw new Error('Soru dizisi boş veya geçersiz');
     }
 
-    return questions.map(q => [
-        q.subject || subjectName,
-        q.question, q.optA, q.optB, q.optC, q.optD, q.optE,
-        q.correct, q.explanation, q.topicSummary
-    ]);
+    return questions.map(q => ({
+        subject: q.subject || subjectName,
+        question_text: q.question,
+        option_a: q.optA,
+        option_b: q.optB,
+        option_c: q.optC,
+        option_d: q.optD,
+        option_e: q.optE,
+        correct_answer: q.correct,
+        explanation: q.explanation,
+        topic_summary: q.topicSummary
+    }));
 }
 
 module.exports = { askAIForQuestions };

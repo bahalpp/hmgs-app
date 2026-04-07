@@ -234,170 +234,220 @@ app.get('/api/flashcards', async (req, res) => {
     }
 });
 
-// --- YAPAY ZEKA OTOMATİK SORU ÜRETİM MOTORU ---
+// --- YAPAY ZEKA PARALel 5-WORKER SORU ÜRETİM MOTORU ---
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-let lastExecutionLog = "Arka plan AI motoru henüz çalıştırılmadı.";
+// Her worker'ın kendi logu
+let workerLogs = {
+    1: 'Deneme 1: Henüz çalıştırılmadı.',
+    2: 'Deneme 2: Henüz çalıştırılmadı.',
+    3: 'Deneme 3: Henüz çalıştırılmadı.',
+    4: 'Deneme 4: Henüz çalıştırılmadı.',
+    5: 'Deneme 5: Henüz çalıştırılmadı.'
+};
+let systemLog = 'Sistem henüz tetiklenmedi.';
 let isGenerating = false;
 
-async function generateAllSubjectsQuestions(limit = subjects.length) {
+// 5 API key'i ortam değişkenlerinden al
+function getApiKeys() {
+    return [
+        process.env.GEMINI_API_KEY_1 || process.env.GEMINI_API_KEY || '',
+        process.env.GEMINI_API_KEY_2 || process.env.GEMINI_API_KEY || '',
+        process.env.GEMINI_API_KEY_3 || process.env.GEMINI_API_KEY || '',
+        process.env.GEMINI_API_KEY_4 || process.env.GEMINI_API_KEY || '',
+        process.env.GEMINI_API_KEY_5 || process.env.GEMINI_API_KEY || ''
+    ];
+}
+
+/**
+ * TEK BİR DENEME SINAVI ÜRETEN WORKER
+ * Her worker bağımsız çalışır, kendi API key'ini kullanır.
+ * 20 ders boyunca döner, her ders için countPerExam kadar soru üretir (toplam 120).
+ * Bittiğinde weekly_exams tablosuna direkt yazar.
+ */
+async function generateSingleExam(examNumber, apiKey) {
+    const logPrefix = `[Deneme ${examNumber}]`;
+    workerLogs[examNumber] = `${logPrefix} [${new Date().toISOString()}] Başlatıldı (Key: ...${apiKey.slice(-6)})\n`;
+
+    let examQuestions = [];
+    let totalFailures = 0;
+
+    for (const subjectObj of subjects) {
+        const count = subjectObj.countPerExam;
+        workerLogs[examNumber] += `${logPrefix} ${subjectObj.name}: ${count} soru isteniyor...\n`;
+
+        let retries = 0;
+        let success = false;
+
+        while (!success && retries < 3) {
+            try {
+                const questions = await askAIForQuestions(subjectObj.name, count, apiKey);
+                if (questions && questions.length > 0) {
+                    examQuestions = examQuestions.concat(questions.slice(0, count));
+                    workerLogs[examNumber] += `  ✅ ${Math.min(questions.length, count)} soru alındı.\n`;
+                    success = true;
+                } else {
+                    retries++;
+                    workerLogs[examNumber] += `  ⚠️ Boş yanıt, tekrar deneniyor (${retries}/3)...\n`;
+                }
+            } catch (e) {
+                retries++;
+                workerLogs[examNumber] += `  ❌ Hata: ${e.message.substring(0, 100)} (${retries}/3)\n`;
+            }
+
+            if (!success && retries < 3) {
+                await sleep(10000); // Hata sonrası 10 sn bekle
+            }
+        }
+
+        if (!success) {
+            totalFailures++;
+            workerLogs[examNumber] += `  ⛔ ${subjectObj.name} dersi atlandı (3 başarısız deneme).\n`;
+        }
+
+        // Rate limit koruması: Her istek arasına 6 sn mola
+        if (subjects.indexOf(subjectObj) < subjects.length - 1) {
+            await sleep(6000);
+        }
+    }
+
+    // Soruları karıştır
+    examQuestions = examQuestions.sort(() => Math.random() - 0.5);
+
+    // Supabase'e yaz
+    if (examQuestions.length >= 50) {
+        const weekStart = new Date().toISOString().split('T')[0];
+        const weekNumber = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000));
+
+        // Önce bu denemenin eski kaydını sil
+        await supabase.from('weekly_exams')
+            .delete()
+            .eq('exam_number', examNumber)
+            .eq('week_number', weekNumber);
+
+        // Yeni sınavı yaz
+        const { error } = await supabase.from('weekly_exams').insert({
+            week_number: weekNumber,
+            exam_number: examNumber,
+            week_start: weekStart,
+            questions_json: examQuestions
+        });
+
+        if (error) {
+            workerLogs[examNumber] += `${logPrefix} ❌ Supabase yazma hatası: ${error.message}\n`;
+        } else {
+            workerLogs[examNumber] += `\n${logPrefix} 🎉 TAMAMLANDI! ${examQuestions.length} soru Supabase'e yazıldı.\n`;
+        }
+
+        // Soruları ayrıca questions tablosuna da ekle (flashcard vs. için)
+        const { error: qErr } = await supabase.from('questions').insert(examQuestions);
+        if (qErr) {
+            workerLogs[examNumber] += `${logPrefix} ⚠️ Questions tablosu yazma uyarısı: ${qErr.message}\n`;
+        }
+    } else {
+        workerLogs[examNumber] += `\n${logPrefix} ❌ Yetersiz soru (${examQuestions.length}). Kayıt yapılmadı.\n`;
+    }
+
+    return { examNumber, questionCount: examQuestions.length, failures: totalFailures };
+}
+
+/**
+ * ANA ORKESTRATÖR: 5 worker'ı paralel başlatır.
+ */
+async function generateAllExamsParallel() {
     if (isGenerating) {
-        lastExecutionLog += `\n[${new Date().toISOString()}] UYARI: Zaten bir üretim işlemi devam ediyor. Yeni istek reddedildi.\n`;
+        systemLog += `\n[${new Date().toISOString()}] UYARI: Zaten bir üretim işlemi devam ediyor.\n`;
         return;
     }
-    
+
     isGenerating = true;
-    lastExecutionLog = `[${new Date().toISOString()}] AI Soru Üretim Motoru Başlatıldı (Gemini 2.5 Flash). Hedef: 5 Deneme Sınavı x 120 Soru\n`;
-    let allNewQuestions = [];
-    
+    systemLog = `[${new Date().toISOString()}] 🚀 PARALel ÜRETIM BAŞLATILDI (5 Worker x 120 Soru)\n`;
+
+    const apiKeys = getApiKeys();
+
+    // Eski soruları temizle
+    systemLog += `[${new Date().toISOString()}] Eski sorular temizleniyor...\n`;
+    await supabase.from('questions').delete().neq('id', 0);
+
+    // 5 worker'ı aynı anda başlat
+    const workers = [];
+    for (let i = 1; i <= 5; i++) {
+        const key = apiKeys[i - 1];
+        if (!key) {
+            workerLogs[i] = `[Deneme ${i}] ❌ API key bulunamadı! GEMINI_API_KEY_${i} tanımlı değil.\n`;
+            systemLog += `[Worker ${i}] ❌ API key eksik, atlanıyor.\n`;
+            continue;
+        }
+        systemLog += `[Worker ${i}] ▶️ Başlatıldı (Key: ...${key.slice(-6)})\n`;
+        workers.push(generateSingleExam(i, key));
+    }
+
     try {
-        let processSubjects = subjects.slice(0, limit);
+        const results = await Promise.allSettled(workers);
 
-        for (const subjectObj of processSubjects) {
-            const totalRequestedCount = subjectObj.countPerExam * 5; // 5 Deneme için toplam soru
-            lastExecutionLog += `[*] ${subjectObj.name} için toplam ${totalRequestedCount} akademik soru parçalar halinde isteniyor...\n`;
-            
-            let remainingQuestions = totalRequestedCount;
-            let subjectFailures = 0;
-
-            while (remainingQuestions > 0 && subjectFailures < 3) {
-                const batchCount = Math.min(remainingQuestions, 15);
-                lastExecutionLog += `  -> Alt-parti isteği: ${batchCount} soru talep ediliyor (Kalan: ${remainingQuestions})...\n`;
-
-                try {
-                    const newQs = await askAIForQuestions(subjectObj.name, batchCount);
-                    if (newQs && newQs.length > 0) {
-                        allNewQuestions = allNewQuestions.concat(newQs);
-                        remainingQuestions -= newQs.length;
-                        lastExecutionLog += `    -> BAŞARILI: ${newQs.length} soru alındı.\n`;
-                    } else {
-                        lastExecutionLog += `    -> [UYARI]: Soru dönmedi, parti atlanıyor...\n`;
-                        subjectFailures++;
-                    }
-                } catch(e) {
-                    lastExecutionLog += `    -> [HATA]: Parça üretiminde sorun: ${e.message}\n`;
-                    subjectFailures++;
-                }
-
-                // Gemini Rate Limit ve stabilitesini korumak için her sorgu arasına 8 saniye mola
-                if (remainingQuestions > 0 || processSubjects.indexOf(subjectObj) < processSubjects.length - 1) {
-                    lastExecutionLog += `    -> Mola veriliyor (8 sn)...\n`;
-                    await sleep(8000); 
-                }
+        systemLog += `\n[${new Date().toISOString()}] ===== SONUÇLAR =====\n`;
+        results.forEach((result, idx) => {
+            if (result.status === 'fulfilled') {
+                const r = result.value;
+                systemLog += `  Deneme ${r.examNumber}: ✅ ${r.questionCount} soru (${r.failures} ders atlandı)\n`;
+            } else {
+                systemLog += `  Worker ${idx + 1}: ❌ Kritik hata: ${result.reason?.message || 'Bilinmeyen'}\n`;
             }
+        });
 
-            if (subjectFailures >= 3) {
-                lastExecutionLog += `  -> DİKKAT: ${subjectObj.name} dersinde art arda 3 hata alındı. Diğer derse geçiliyor...\n`;
-            }
-        }
-
-        if (allNewQuestions.length >= 100) { // En azından bir miktar soru gelmiş olmalı
-            lastExecutionLog += `\n[${new Date().toISOString()}] Veritabanı Yenileniyor...\n`;
-            
-            // 1. Mevcut tüm soruları ve denemeleri sil
-            await supabase.from('questions').delete().neq('id', 0);
-            await supabase.from('weekly_exams').delete().neq('id', 0);
-                
-            // 2. Soruları 'questions' tablosuna enjekte et
-            const insertData = allNewQuestions.map(q => ({
-                subject: q[0],
-                question_text: q[1],
-                option_a: q[2],
-                option_b: q[3],
-                option_c: q[4],
-                option_d: q[5],
-                option_e: q[6],
-                correct_answer: q[7],
-                explanation: q[8],
-                topic_summary: q[9]
-            }));
-
-            const { error: insertError } = await supabase.from('questions').insert(insertData);
-            if (insertError) {
-                 lastExecutionLog += `[HATA] Soru enjeksiyonu başarısız: ${insertError.message}\n`;
-                 throw insertError;
-            }
-
-            // 3. 5 ADET BENZERSİZ DENEME SINAVI OLUŞTUR
-            // Her deneme 120 soru (ÖSYM dağılımına uygun)
-            lastExecutionLog += `[${new Date().toISOString()}] 5 Adet Benzersiz Deneme Sınavı Hazırlanıyor...\n`;
-            
-            const weekStart = new Date().toISOString().split('T')[0];
-            const weekNumber = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000));
-
-            for (let i = 1; i <= 5; i++) {
-                let examQuestions = [];
-                
-                // Her ders için o dersin sorularından countPerExam kadarını bu denemeye al
-                for (const subj of subjects) {
-                    const subjQs = allNewQuestions.filter(q => q[0] === subj.name);
-                    // Her deneme için farklı sorular seçmek için (i-1)*countPerExam'den başla
-                    const startIdx = (i - 1) * subj.countPerExam;
-                    const selected = subjQs.slice(startIdx, startIdx + subj.countPerExam);
-                    
-                    examQuestions = examQuestions.concat(selected.map(q => ({
-                        subject: q[0],
-                        question_text: q[1],
-                        option_a: q[2],
-                        option_b: q[3],
-                        option_c: q[4],
-                        option_d: q[5],
-                        option_e: q[6],
-                        correct_answer: q[7],
-                        explanation: q[8],
-                        topic_summary: q[9]
-                    })));
-                }
-
-                // Sınavın içindeki soruları karıştır (Shuffle)
-                examQuestions = examQuestions.sort(() => Math.random() - 0.5);
-
-                await supabase.from('weekly_exams').insert({
-                    week_number: weekNumber,
-                    exam_number: i,
-                    week_start: weekStart,
-                    questions_json: examQuestions
-                });
-            }
-
-            lastExecutionLog += `[MUTLU SON] 5 Deneme Sınavı (Toplam ${allNewQuestions.length} soru) başarıyla oluşturuldu!\n`;
-        } else {
-            lastExecutionLog += `\n[HATA] Yeterli soru üretilemedi (${allNewQuestions.length}). Süreç iptal.\n`;
-        }
-    } catch (globalErr) {
-        lastExecutionLog += `\n[KRİTİK SİSTEM HATASI]: ${globalErr.message}\n`;
+        systemLog += `\n[${new Date().toISOString()}] 🏁 TÜM WORKER'LAR TAMAMLANDI.\n`;
+    } catch (e) {
+        systemLog += `\n[KRİTİK HATA]: ${e.message}\n`;
     } finally {
         isGenerating = false;
     }
 }
 
-// 1. OTOMATİK SİSTEM: Her Pazar gecesi saat 03:00'te uyan, havuzu SIFIRLA ve 500 soru çek.
+// 1. OTOMATİK SİSTEM: Her Pazar gecesi saat 03:00'te çalışır.
 cron.schedule('0 3 * * 0', async () => {
-    console.log("Zamanlayıcı tetiklendi: Haftalık Yık-Yap Soru Üretimi (Bulut Modu)");
-    await generateAllSubjectsQuestions();
+    console.log("Zamanlayıcı tetiklendi: Haftalık Paralel Soru Üretimi");
+    await generateAllExamsParallel();
 });
 
-// 2. MANUEL (KULLANICI) SİSTEMİ: Admin butona basarsa soru üretir ve sonucu arkadan işler.
+// 2. MANUEL TETİKLEME
 app.all('/api/admin/generate-questions', (req, res) => {
     const adminPassword = req.body?.password || req.query?.password;
     if (adminPassword !== 'avuka2026') return res.status(401).json({ error: "Geçersiz şifre" });
-    
-    let limit = subjects.length;
-    if (req.query.limit) limit = parseInt(req.query.limit);
 
-    // Render'ın 2 dakikalık Time-out sınırına takılmamak için işlemi arka plana atıp hemen yanıt dönüyoruz.
-    generateAllSubjectsQuestions(limit).catch(e => console.error(e));
-    
-    const countMsg = limit < subjects.length ? limit : subjects.length;
-    res.json({ message: `Sistem başarıyla tetiklendi! Toplam ${countMsg} ders için arka planda Yapay Zeka üretimi başladı. Yaklaşık 3-4 dakika sürecektir. Bittiğinde şu log adresinden raporu okuyabilirsin: /api/admin/logs` });
+    generateAllExamsParallel().catch(e => console.error(e));
+
+    res.json({ 
+        message: '🚀 5 Worker paralel olarak başlatıldı! Her biri bağımsız çalışıyor.',
+        logLinks: {
+            genel: '/api/admin/logs',
+            deneme1: '/api/admin/logs/1',
+            deneme2: '/api/admin/logs/2',
+            deneme3: '/api/admin/logs/3',
+            deneme4: '/api/admin/logs/4',
+            deneme5: '/api/admin/logs/5'
+        }
+    });
 });
 
+// 3. LOG ENDPOINTLERİ
 app.get('/api/admin/logs', (req, res) => {
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.send(lastExecutionLog);
+    let fullLog = systemLog + '\n\n';
+    for (let i = 1; i <= 5; i++) {
+        fullLog += `========== DENEME ${i} ==========\n${workerLogs[i]}\n\n`;
+    }
+    res.send(fullLog);
+});
+
+app.get('/api/admin/logs/:examNum', (req, res) => {
+    const num = parseInt(req.params.examNum);
+    if (num < 1 || num > 5) return res.status(400).json({ error: 'Geçersiz deneme numarası (1-5)' });
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.send(workerLogs[num]);
 });
 
 app.listen(PORT, () => {
     console.log(`Supabase-Destekli Sunucu ${PORT} portunda başarıyla çalışıyor.`);
 });
+
