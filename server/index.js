@@ -370,21 +370,36 @@ async function generateAllExamsParallel() {
     systemLog += `[${new Date().toISOString()}] Eski sorular temizleniyor...\n`;
     await supabase.from('questions').delete().neq('id', 0);
 
-    // 5 worker'ı aynı anda başlat
-    const workers = [];
-    for (let i = 1; i <= 5; i++) {
-        const key = apiKeys[i - 1];
-        if (!key) {
-            workerLogs[i] = `[Deneme ${i}] ❌ API key bulunamadı! GEMINI_API_KEY_${i} tanımlı değil.\n`;
-            systemLog += `[Worker ${i}] ❌ API key eksik, atlanıyor.\n`;
-            continue;
-        }
-        systemLog += `[Worker ${i}] ▶️ Başlatıldı (Key: ...${key.slice(-6)})\n`;
-        workers.push(generateSingleExam(i, key));
-    }
+    // Worker başlatma işlemi sıralı (sequential) bloğa bırakıldı
 
     try {
-        const results = await Promise.allSettled(workers);
+        const results = [];
+        for (let i = 1; i <= 5; i++) {
+            const key = apiKeys[i - 1];
+            if (!key) {
+                workerLogs[i] = `[Deneme ${i}] ❌ API key bulunamadı! GEMINI_API_KEY_${i} tanımlı değil.\n`;
+                systemLog += `[Worker ${i}] ❌ API key eksik, atlanıyor.\n`;
+                continue;
+            }
+            
+            systemLog += `[Worker ${i}] ▶️ Sıraya girdi, işleme başlıyor (Key: ...${key.slice(-6)})\n`;
+            
+            try {
+                // Burada `await` diyerek paraleli bozup, sırf IP ban yememek için SIRA SIRA çalıştırıyoruz.
+                const r = await generateSingleExam(i, key);
+                results.push({ status: 'fulfilled', value: r });
+                systemLog += `[Worker ${i}] ✅ Tamamlandı! ${r.questionCount} soru.\n`;
+            } catch (err) {
+                results.push({ status: 'rejected', reason: err });
+                systemLog += `[Worker ${i}] ❌ Kritik hata oluştu: ${err.message}\n`;
+            }
+
+            // Diğer denemeye geçmeden önce Google IP ban'ına yakalanmamak için 15 saniye nefes payı
+            if (i < 5) {
+                systemLog += `[SİSTEM] Diğer deneme sınavına geçiliyor. IP limitlerini sıfırlamak için 15 sn mola...\n`;
+                await sleep(15000);
+            }
+        }
 
         systemLog += `\n[${new Date().toISOString()}] ===== SONUÇLAR =====\n`;
         results.forEach((result, idx) => {
