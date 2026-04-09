@@ -370,35 +370,50 @@ async function generateAllExamsParallel() {
     systemLog += `[${new Date().toISOString()}] Eski sorular temizleniyor...\n`;
     await supabase.from('questions').delete().neq('id', 0);
 
-    // 5 worker'ı PARALEL başlat (her biri farklı Google projesinin key'ini kullanıyor)
-    const workers = [];
-    for (let i = 1; i <= 5; i++) {
-        const key = apiKeys[i - 1];
-        if (!key) {
-            workerLogs[i] = `[Deneme ${i}] ❌ API key bulunamadı! GEMINI_API_KEY_${i} tanımlı değil.\n`;
-            systemLog += `[Worker ${i}] ❌ API key eksik, atlanıyor.\n`;
-            continue;
-        }
-        systemLog += `[Worker ${i}] ▶️ Başlatıldı (Key: ...${key.slice(-6)})\n`;
-        workers.push(generateSingleExam(i, key));
-    }
+    // 5 worker'ı SIRALI başlat (her biri farklı Google projesinin key'ini kullanarak IP banını önlüyor)
 
     try {
-        const results = await Promise.allSettled(workers);
+        const results = [];
+        for (let i = 1; i <= 5; i++) {
+            const key = apiKeys[i - 1];
+            if (!key) {
+                workerLogs[i] = `[Deneme ${i}] ❌ API key bulunamadı! GEMINI_API_KEY_${i} tanımlı değil.\n`;
+                systemLog += `[Worker ${i}] ❌ API key eksik, atlanıyor.\n`;
+                continue;
+            }
+            
+            systemLog += `[Worker ${i}] ▶️ İşleme başlıyor (Key: ...${key.slice(-6)})\n`;
+            
+            try {
+                // SIRA SIRA çalıştırıyoruz ki Render IP'si Google tarafından banlanmasın.
+                const r = await generateSingleExam(i, key);
+                results.push({ status: 'fulfilled', value: r });
+                systemLog += `[Worker ${i}] ✅ BAŞARILI: ${r.questionCount} soru.\n`;
+            } catch (err) {
+                results.push({ status: 'rejected', reason: err });
+                systemLog += `[Worker ${i}] ❌ KRİTİK HATA: ${err.message}\n`;
+            }
 
-        systemLog += `\n[${new Date().toISOString()}] ===== SONUÇLAR =====\n`;
+            // Diğer projeye geçmeden önce IP kotasını (RPM) soğutmak için mola
+            if (i < 5) {
+                systemLog += `[SİSTEM] Diğer projeye/denemeye geçmeden önce 15 sn mola...\n`;
+                await sleep(15000);
+            }
+        }
+
+        systemLog += `\n[${new Date().toISOString()}] ===== FİNAL RAPORU =====\n`;
         results.forEach((result, idx) => {
             if (result.status === 'fulfilled') {
                 const r = result.value;
-                systemLog += `  Deneme ${r.examNumber}: ✅ ${r.questionCount} soru (${r.failures} ders atlandı)\n`;
+                systemLog += `  Deneme ${r.examNumber}: ✅ ${r.questionCount} soru\n`;
             } else {
-                systemLog += `  Worker ${idx + 1}: ❌ Kritik hata: ${result.reason?.message || 'Bilinmeyen'}\n`;
+                systemLog += `  Worker ${idx + 1}: ❌ Başarısız: ${result.reason?.message || 'Bilinmeyen'}\n`;
             }
         });
 
-        systemLog += `\n[${new Date().toISOString()}] 🏁 TÜM WORKER'LAR TAMAMLANDI.\n`;
+        systemLog += `\n[${new Date().toISOString()}] 🏁 TÜM SÜREÇ TAMAMLANDI.\n`;
     } catch (e) {
-        systemLog += `\n[KRİTİK HATA]: ${e.message}\n`;
+        systemLog += `\n[SİSTEM HATASI]: ${e.message}\n`;
     } finally {
         isGenerating = false;
     }
