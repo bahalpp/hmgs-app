@@ -362,7 +362,7 @@ async function generateAllExamsParallel() {
     }
 
     isGenerating = true;
-    systemLog = `[${new Date().toISOString()}] 🚀 PARALel ÜRETIM BAŞLATILDI (5 Worker x 120 Soru)\n`;
+    systemLog = `[${new Date().toISOString()}] 🚀 ÜRETİM BAŞLATILDI (4 Worker x 120 Soru)\n`;
 
     const apiKeys = getApiKeys();
 
@@ -374,7 +374,7 @@ async function generateAllExamsParallel() {
 
     try {
         const results = [];
-        for (let i = 1; i <= 5; i++) {
+        for (let i = 1; i <= 4; i++) {
             const key = apiKeys[i - 1];
             if (!key) {
                 workerLogs[i] = `[Deneme ${i}] ❌ API key bulunamadı! GEMINI_API_KEY_${i} tanımlı değil.\n`;
@@ -395,7 +395,7 @@ async function generateAllExamsParallel() {
             }
 
             // Diğer projeye geçmeden önce IP kotasını (RPM) soğutmak için mola
-            if (i < 5) {
+            if (i < 4) {
                 systemLog += `[SİSTEM] Diğer projeye/denemeye geçmeden önce 15 sn mola...\n`;
                 await sleep(15000);
             }
@@ -433,14 +433,13 @@ app.all('/api/admin/generate-questions', (req, res) => {
     generateAllExamsParallel().catch(e => console.error(e));
 
     res.json({ 
-        message: '🚀 5 Worker paralel olarak başlatıldı! Her biri bağımsız çalışıyor.',
+        message: '🚀 4 Worker başlatıldı! Her biri bağımsız çalışıyor.',
         logLinks: {
             genel: '/api/admin/logs',
             deneme1: '/api/admin/logs/1',
             deneme2: '/api/admin/logs/2',
             deneme3: '/api/admin/logs/3',
-            deneme4: '/api/admin/logs/4',
-            deneme5: '/api/admin/logs/5'
+            deneme4: '/api/admin/logs/4'
         }
     });
 });
@@ -449,7 +448,7 @@ app.all('/api/admin/generate-questions', (req, res) => {
 app.get('/api/admin/logs', (req, res) => {
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     let fullLog = systemLog + '\n\n';
-    for (let i = 1; i <= 5; i++) {
+    for (let i = 1; i <= 4; i++) {
         fullLog += `========== DENEME ${i} ==========\n${workerLogs[i]}\n\n`;
     }
     res.send(fullLog);
@@ -457,7 +456,7 @@ app.get('/api/admin/logs', (req, res) => {
 
 app.get('/api/admin/logs/:examNum', (req, res) => {
     const num = parseInt(req.params.examNum);
-    if (num < 1 || num > 5) return res.status(400).json({ error: 'Geçersiz deneme numarası (1-5)' });
+    if (num < 1 || num > 4) return res.status(400).json({ error: 'Geçersiz deneme numarası (1-4)' });
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.send(workerLogs[num]);
 });
