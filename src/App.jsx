@@ -335,7 +335,7 @@ function QuizView({ exam, onFinish, onExit, fmt }) {
   const qs = exam?.questions || [];
   const [idx, setIdx] = useState(0);
   const [ans, setAns] = useState({});
-  const [time, setTime] = useState(qs.length * 72); // ~1.2 dk/soru
+  const [time, setTime] = useState(155 * 60);
 
   useEffect(() => { const t = setInterval(() => setTime(p => { if (p <= 0) return 0; return p-1; }), 1000); return () => clearInterval(t); }, []);
   useEffect(() => { if (time === 0 && qs.length > 0) finish(); }, [time]);
@@ -344,7 +344,7 @@ function QuizView({ exam, onFinish, onExit, fmt }) {
     const results = qs.map((q, i) => ({ ...q, userAnswer: ans[i] || null, isCorrect: ans[i] === q.correct_answer }));
     const correct = results.filter(r => r.isCorrect).length;
     const blank = results.filter(r => !r.userAnswer).length;
-    onFinish({ questions: results, correct, wrong: qs.length - correct - blank, blank, score: Math.round((correct / qs.length) * 100), time: (qs.length * 72) - time, answers: ans });
+    onFinish({ questions: results, correct, wrong: qs.length - correct - blank, blank, score: Math.round((correct / qs.length) * 100), time: (155 * 60) - time, answers: ans });
   };
 
   if (qs.length === 0) return <div className="animate-fade"><h2>Sorular yükleniyor...</h2></div>;
