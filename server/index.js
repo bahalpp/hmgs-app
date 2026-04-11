@@ -55,15 +55,21 @@ app.get('/api/weekly-exams', async (req, res) => {
 
         if (error) throw error;
 
-        // Varsa direkt Cache'den dön;
+        // Varsa direkt Cache'den dön — AMA soruları boş olanları temizle;
         if (rows && rows.length === 5) {
-            const exams = rows.map(r => ({
-                id: r.id, 
-                examNumber: r.exam_number,
-                weekStart: r.week_start,
-                questions: r.questions_json // JSONB olduğu için otomatik nesne olarak gelir
-            })).sort((a,b) => a.examNumber - b.examNumber);
-            return res.json({ weekNumber: weekNum, weekStart: monday, exams });
+            // Eğer herhangi bir sınavın sorusu boşsa, cache geçersizdir — hepsini sil ve yeniden oluştur.
+            const hasEmpty = rows.some(r => !r.questions_json || r.questions_json.length === 0);
+            if (!hasEmpty) {
+                const exams = rows.map(r => ({
+                    id: r.id, 
+                    examNumber: r.exam_number,
+                    weekStart: r.week_start,
+                    questions: r.questions_json
+                })).sort((a,b) => a.examNumber - b.examNumber);
+                return res.json({ weekNumber: weekNum, weekStart: monday, exams });
+            }
+            // Boş sınavlar var — eskiyi temizleyip yenisini oluştur
+            await supabase.from('weekly_exams').delete().eq('week_number', weekNum);
         }
 
         // Yoksa eskileri temizleyip o hafta için YENİ DENEME yarat.
