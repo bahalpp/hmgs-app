@@ -276,14 +276,19 @@ async function generateSingleExam(examNumber, apiKey) {
     // Dersleri ~30 soruluk küçük paketlere (batch) bölelim
     // (Büyük paketler sorulduğunda Google API zaman aşımına (Timeout) uğruyordu)
     const batches = [];
-    // Ders listesini (20 ders) tam olarak 5'er derslik 4 gruba bölüyoruz.
-    for (let i = 0; i < subjects.length; i += 5) {
-        const chunk = subjects.slice(i, i + 5).map(s => ({
-            name: s.name,
-            count: s.countPerExam
-        }));
-        batches.push(chunk);
+    let currentBatch = [];
+    let currentCount = 0;
+
+    for (const subjectObj of subjects) {
+        if (currentCount + subjectObj.countPerExam > 24 && currentBatch.length > 0) {
+            batches.push(currentBatch);
+            currentBatch = [];
+            currentCount = 0;
+        }
+        currentBatch.push({ name: subjectObj.name, count: subjectObj.countPerExam });
+        currentCount += subjectObj.countPerExam;
     }
+    if (currentBatch.length > 0) batches.push(currentBatch);
 
     // batches değişkeni artık 4 parçaya (27, 33, 33, 27 soruluk) bölünmüş olacak
     for (const [index, batch] of batches.entries()) {
@@ -323,8 +328,8 @@ async function generateSingleExam(examNumber, apiKey) {
 
     // Supabase'e yaz
     if (examQuestions.length >= 50) {
-        const weekStart = new Date().toISOString().split('T')[0];
-        const weekNumber = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000));
+        const weekStart = getMonday();
+        const weekNumber = getWeekNumber();
 
         // Önce bu denemenin eski kaydını sil
         await supabase.from('weekly_exams')
