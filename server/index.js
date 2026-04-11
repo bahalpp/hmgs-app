@@ -273,14 +273,27 @@ async function generateSingleExam(examNumber, apiKey) {
 
     let examQuestions = [];
     
-    // Dersleri 2 büyük gruba ayırarak daha verimli çekelim (60 + 60 soru)
-    const midPoint = Math.ceil(subjects.length / 2);
-    const batch1 = subjects.slice(0, midPoint).map(s => ({ name: s.name, count: s.countPerExam }));
-    const batch2 = subjects.slice(midPoint).map(s => ({ name: s.name, count: s.countPerExam }));
+    // Dersleri ~30 soruluk küçük paketlere (batch) bölelim
+    // (Büyük paketler sorulduğunda Google API zaman aşımına (Timeout) uğruyordu)
+    const batches = [];
+    let currentBatch = [];
+    let currentCount = 0;
 
-    const batches = [batch1, batch2];
+    for (const subjectObj of subjects) {
+        // Eğer bu dersi eklediğimizde 35 soruyu geçiyorsak, önce mevcut paketi gönderime tescilleyelim
+        if (currentCount + subjectObj.countPerExam > 35 && currentBatch.length > 0) {
+            batches.push(currentBatch);
+            currentBatch = [];
+            currentCount = 0;
+        }
+        currentBatch.push({ name: subjectObj.name, count: subjectObj.countPerExam });
+        currentCount += subjectObj.countPerExam;
+    }
+    if (currentBatch.length > 0) batches.push(currentBatch);
 
+    // batches değişkeni artık 4 parçaya (27, 33, 33, 27 soruluk) bölünmüş olacak
     for (const [index, batch] of batches.entries()) {
+
         workerLogs[examNumber] += `${logPrefix} Batch ${index + 1} başlatılıyor (${batch.length} ders)...\n`;
         
         let retries = 0;
