@@ -26,7 +26,7 @@ function geminiRequest(payload, apiKey) {
             });
         });
 
-        req.setTimeout(180000, () => { req.destroy(); reject(new Error('API zaman aşımı (180sn)')); });
+        req.setTimeout(600000, () => { req.destroy(); reject(new Error('API zaman aşımı (600sn)')); });
         req.on('error', (e) => reject(new Error(`Bağlantı hatası: ${e.message}`)));
         req.write(body);
         req.end();
