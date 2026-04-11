@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const { supabase, initDb, subjects } = require('./database');
 const cron = require('node-cron');
-const { askAIForQuestions } = require('./question-generator');
+const { askAIForQuestions, askAIForBatchQuestions } = require('./question-generator');
 require('dotenv').config();
 
 const app = express();
@@ -75,29 +75,30 @@ app.get('/api/weekly-exams', async (req, res) => {
 
         // Derslerine göre parselle ve karıştır
         const pools = {};
-        for (const subject of subjects) {
-            const qs = allQs.filter(q => q.subject === subject);
-            pools[subject] = shuffle([...qs]);
+        for (const subjectObj of subjects) {
+            const qs = allQs.filter(q => q.subject === subjectObj.name);
+            pools[subjectObj.name] = shuffle([...qs]);
         }
 
         const exams = [];
         for (let i = 1; i <= 5; i++) {
             let examQuestions = [];
-            for (const subject of subjects) {
-                let qs = pools[subject] || [];
-                let indices = [];
-
-                if (qs.length >= 10) {
-                    if (i === 1) indices = [0,1,2,3,4];       // 0 ile başlar
-                    else if (i === 2) indices = [5,6,7,8,9];  // 5 ile başlar
-                    else if (i === 3) indices = [1,3,5,7,9];  // 1 ile başlar
-                    else if (i === 4) indices = [2,4,6,8,0];  // 2 ile başlar
-                    else if (i === 5) indices = [3,6,9,1,4];  // 3 ile başlar
+            for (const subjectObj of subjects) {
+                let qs = pools[subjectObj.name] || [];
+                const countNeeded = subjectObj.countPerExam;
+                
+                // Her sınavda farklı sorular gelmesi için basit bir kaydırma (offset) mantığı
+                // Not: Eğer havuzda yeterli soru yoksa shuffle edilmiş havuzdan ihtiyaç kadarını alırız.
+                let selected = [];
+                if (qs.length >= countNeeded * 1.5) {
+                    // Basit bir kaydırma ile farklı soruların gelmesini sağla
+                    const startIdx = (i - 1) * Math.floor(qs.length / 5);
+                    selected = qs.slice(startIdx, startIdx + countNeeded);
                 } else {
-                    indices = shuffle([...Array(qs.length).keys()]).slice(0, 5);
+                    // Soru azsa rastgele karıştırıp ihtiyacımız olan kadarını alalım
+                    selected = shuffle([...qs]).slice(0, countNeeded);
                 }
                 
-                const selected = indices.map(idx => qs[idx]);
                 // Undefined objeleri temizle (soru eksikliği varsa patlamaması için)
                 examQuestions = examQuestions.concat(selected.filter(Boolean));
             }
@@ -271,45 +272,43 @@ async function generateSingleExam(examNumber, apiKey) {
     workerLogs[examNumber] = `${logPrefix} [${new Date().toISOString()}] Başlatıldı (Key: ...${apiKey.slice(-6)})\n`;
 
     let examQuestions = [];
-    let totalFailures = 0;
+    
+    // Dersleri 2 büyük gruba ayırarak daha verimli çekelim (60 + 60 soru)
+    const midPoint = Math.ceil(subjects.length / 2);
+    const batch1 = subjects.slice(0, midPoint).map(s => ({ name: s.name, count: s.countPerExam }));
+    const batch2 = subjects.slice(midPoint).map(s => ({ name: s.name, count: s.countPerExam }));
 
-    for (const subjectObj of subjects) {
-        const count = subjectObj.countPerExam;
-        workerLogs[examNumber] += `${logPrefix} ${subjectObj.name}: ${count} soru isteniyor...\n`;
+    const batches = [batch1, batch2];
 
+    for (const [index, batch] of batches.entries()) {
+        workerLogs[examNumber] += `${logPrefix} Batch ${index + 1} başlatılıyor (${batch.length} ders)...\n`;
+        
         let retries = 0;
         let success = false;
 
         while (!success && retries < 3) {
             try {
-                const questions = await askAIForQuestions(subjectObj.name, count, apiKey);
+                const questions = await askAIForBatchQuestions(batch, apiKey);
                 if (questions && questions.length > 0) {
-                    examQuestions = examQuestions.concat(questions.slice(0, count));
-                    workerLogs[examNumber] += `  ✅ ${Math.min(questions.length, count)} soru alındı.\n`;
+                    examQuestions = examQuestions.concat(questions);
+                    workerLogs[examNumber] += `  ✅ Batch ${index + 1}: ${questions.length} soru alındı.\n`;
                     success = true;
                 } else {
                     retries++;
-                    workerLogs[examNumber] += `  ⚠️ Boş yanıt, tekrar deneniyor (${retries}/3)...\n`;
+                    workerLogs[examNumber] += `  ⚠️ Batch ${index + 1} boş yanıt, tekrar deneniyor (${retries}/3)...\n`;
                 }
             } catch (e) {
                 retries++;
-                workerLogs[examNumber] += `  ❌ Hata: ${e.message.substring(0, 100)} (${retries}/3)\n`;
+                workerLogs[examNumber] += `  ❌ Batch ${index + 1} Hatası: ${e.message.substring(0, 100)} (${retries}/3)\n`;
             }
 
             if (!success && retries < 3) {
-                await sleep(10000); // Hata sonrası 10 sn bekle
+                await sleep(15000); // Hata sonrası 15 sn bekle
             }
         }
 
-        if (!success) {
-            totalFailures++;
-            workerLogs[examNumber] += `  ⛔ ${subjectObj.name} dersi atlandı (3 başarısız deneme).\n`;
-        }
-
-        // Rate limit koruması: Her istek arasına 6 sn mola
-        if (subjects.indexOf(subjectObj) < subjects.length - 1) {
-            await sleep(6000);
-        }
+        // Batchler arası kısa mola
+        if (index === 0) await sleep(10000);
     }
 
     // Soruları karıştır
@@ -349,7 +348,7 @@ async function generateSingleExam(examNumber, apiKey) {
         workerLogs[examNumber] += `\n${logPrefix} ❌ Yetersiz soru (${examQuestions.length}). Kayıt yapılmadı.\n`;
     }
 
-    return { examNumber, questionCount: examQuestions.length, failures: totalFailures };
+    return { examNumber, questionCount: examQuestions.length, failures: 0 };
 }
 
 /**
@@ -362,7 +361,7 @@ async function generateAllExamsParallel() {
     }
 
     isGenerating = true;
-    systemLog = `[${new Date().toISOString()}] 🚀 ÜRETİM BAŞLATILDI (4 Worker x 120 Soru)\n`;
+    systemLog = `[${new Date().toISOString()}] 🚀 ÜRETİM BAŞLATILDI (5 Worker x 120 Soru)\n`;
 
     const apiKeys = getApiKeys();
 
@@ -374,7 +373,7 @@ async function generateAllExamsParallel() {
 
     try {
         const results = [];
-        for (let i = 1; i <= 4; i++) {
+        for (let i = 1; i <= 5; i++) {
             const key = apiKeys[i - 1];
             if (!key) {
                 workerLogs[i] = `[Deneme ${i}] ❌ API key bulunamadı! GEMINI_API_KEY_${i} tanımlı değil.\n`;
@@ -385,7 +384,6 @@ async function generateAllExamsParallel() {
             systemLog += `[Worker ${i}] ▶️ İşleme başlıyor (Key: ...${key.slice(-6)})\n`;
             
             try {
-                // SIRA SIRA çalıştırıyoruz ki Render IP'si Google tarafından banlanmasın.
                 const r = await generateSingleExam(i, key);
                 results.push({ status: 'fulfilled', value: r });
                 systemLog += `[Worker ${i}] ✅ BAŞARILI: ${r.questionCount} soru.\n`;
@@ -394,10 +392,10 @@ async function generateAllExamsParallel() {
                 systemLog += `[Worker ${i}] ❌ KRİTİK HATA: ${err.message}\n`;
             }
 
-            // Diğer projeye geçmeden önce IP kotasını (RPM) soğutmak için mola
-            if (i < 4) {
-                systemLog += `[SİSTEM] Diğer projeye/denemeye geçmeden önce 15 sn mola...\n`;
-                await sleep(15000);
+            // Diğer denemeye geçmeden önce IP kotasını (RPM) soğutmak için 1 DAKİKA mola
+            if (i < 5) {
+                systemLog += `[SİSTEM] Diğer denemeye geçmeden önce 60 sn mola (IP Ban Koruması)...\n`;
+                await sleep(60000);
             }
         }
 
@@ -433,13 +431,14 @@ app.all('/api/admin/generate-questions', (req, res) => {
     generateAllExamsParallel().catch(e => console.error(e));
 
     res.json({ 
-        message: '🚀 4 Worker başlatıldı! Her biri bağımsız çalışıyor.',
+        message: '🚀 5 Worker başlatıldı! Her biri bağımsız çalışıyor.',
         logLinks: {
             genel: '/api/admin/logs',
             deneme1: '/api/admin/logs/1',
             deneme2: '/api/admin/logs/2',
             deneme3: '/api/admin/logs/3',
-            deneme4: '/api/admin/logs/4'
+            deneme4: '/api/admin/logs/4',
+            deneme5: '/api/admin/logs/5'
         }
     });
 });
@@ -448,7 +447,7 @@ app.all('/api/admin/generate-questions', (req, res) => {
 app.get('/api/admin/logs', (req, res) => {
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     let fullLog = systemLog + '\n\n';
-    for (let i = 1; i <= 4; i++) {
+    for (let i = 1; i <= 5; i++) {
         fullLog += `========== DENEME ${i} ==========\n${workerLogs[i]}\n\n`;
     }
     res.send(fullLog);
@@ -456,9 +455,57 @@ app.get('/api/admin/logs', (req, res) => {
 
 app.get('/api/admin/logs/:examNum', (req, res) => {
     const num = parseInt(req.params.examNum);
-    if (num < 1 || num > 4) return res.status(400).json({ error: 'Geçersiz deneme numarası (1-4)' });
+    if (num < 1 || num > 5) return res.status(400).json({ error: 'Geçersiz deneme numarası (1-5)' });
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.send(workerLogs[num]);
+});
+
+// --- ÇIKMIŞ SORULAR API ---
+
+app.get('/api/past-questions', async (req, res) => {
+    try {
+        const { year, exam_type, subject } = req.query;
+        let query = supabase.from('past_questions').select('*');
+        
+        if (year) query = query.eq('year', year);
+        if (exam_type) query = query.eq('exam_type', exam_type);
+        if (subject) query = query.eq('subject', subject);
+        
+        const { data, error } = await query.order('year', { ascending: false });
+        if (error) throw error;
+        
+        res.json(data);
+    } catch(e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/admin/past-questions', async (req, res) => {
+    const { password, questions } = req.body;
+    if (password !== 'avuka2026') return res.status(401).json({ error: "Yetkisiz" });
+    
+    try {
+        const { data, error } = await supabase.from('past_questions').insert(questions.map(q => ({
+            year: q.year,
+            exam_type: q.exam_type,
+            subject: q.subject,
+            question_text: q.question_text,
+            option_a: q.option_a,
+            option_b: q.option_b,
+            option_c: q.option_c,
+            option_d: q.option_d,
+            option_e: q.option_e,
+            correct_answer: q.correct_answer,
+            explanation: q.explanation,
+            hap_bilgisi: q.hap_bilgisi,
+            is_premium: q.is_premium !== undefined ? q.is_premium : true
+        })));
+        
+        if (error) throw error;
+        res.json({ message: `${questions.length} adet çıkmış soru eklendi.` });
+    } catch(e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 app.listen(PORT, () => {

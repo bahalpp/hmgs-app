@@ -122,4 +122,62 @@ Her obje: {"subject","question","optA","optB","optC","optD","optE","correct","ex
     }));
 }
 
-module.exports = { askAIForQuestions };
+/**
+ * Birden fazla ders için toplu soru üretir (Batch Mode).
+ * 120 soruyu 2-3 parçada alarak API limitlerini ve token sınırlarını verimli kullanır.
+ */
+async function askAIForBatchQuestions(subjectList, apiKey) {
+    if (!apiKey) throw new Error('API key eksik!');
+
+    const totalRequested = subjectList.reduce((sum, s) => sum + s.count, 0);
+    const subjectsDetail = subjectList.map(s => `- ${s.name}: ${s.count} soru`).join('\n');
+
+    const payload = {
+        contents: [{
+            role: 'user',
+            parts: [{ text: `Sen HMGS sınav sorusu üreten kıdemli bir hukuk AI'ısın. 
+Aşağıdaki ders dağılımına göre toplam %${totalRequested} adet profesyonel soru üret:
+
+${subjectsDetail}
+
+Kurallar:
+1. Her ders için TAM OLARAK istenen sayıda soru üret.
+2. Soruların %70'i "olay (kurgu)" sorusu, %30'u "bilgi" sorusu olsun.
+3. Zorluk derecesi: ÖSYM / Adli Yargı Hakimlik sınavı düzeyinde (Zor).
+4. Her sorunun "explanation" kısmında ilgili Kanun Maddesi numarasını mutlaka belirt.
+5. "topicSummary" kısmına o sorunun konusuyla ilgili unutulmaması gereken 1 cümlelik "hap bilgi" yaz.
+6. "subject" alanına listedeki ders adını harfiyen yaz.
+
+SADECE saf JSON dizisi döndür.
+Obje Yapısı: {"subject","question","optA","optB","optC","optD","optE","correct","explanation","topicSummary"}` }]
+        }],
+        generationConfig: {
+            temperature: 0.8,
+            responseMimeType: 'application/json'
+        }
+    };
+
+    const raw = await geminiRequest(payload, apiKey);
+    const apiResponse = JSON.parse(raw);
+
+    if (!apiResponse.candidates?.[0]?.content?.parts?.[0]?.text) {
+        throw new Error('API boş/geçersiz yanıt döndürdü');
+    }
+
+    const questions = extractJSON(apiResponse.candidates[0].content.parts[0].text);
+
+    return questions.map(q => ({
+        subject: q.subject,
+        question_text: q.question,
+        option_a: q.optA,
+        option_b: q.optB,
+        option_c: q.optC,
+        option_d: q.optD,
+        option_e: q.optE,
+        correct_answer: q.correct,
+        explanation: q.explanation,
+        topic_summary: q.topicSummary
+    }));
+}
+
+module.exports = { askAIForQuestions, askAIForBatchQuestions };

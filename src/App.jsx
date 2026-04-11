@@ -155,12 +155,22 @@ function Dashboard({studyTime,isTimerRunning,setIsTimerRunning,setStudyTime,stre
 
       <div className="card" style={{background:'linear-gradient(135deg,#eef2ff,#e0e7ff)',border:'1px solid #c7d2fe'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
-          <div><h2 style={{color:'var(--primary)'}}>📝 Haftalık Denemeler</h2><p>5 Deneme • Her Dersten 5 Soru</p></div>
+          <div><h2 style={{color:'var(--primary)'}}>📝 Haftalık Denemeler</h2><p>5 Deneme • Her Dersten Dinamik Soru</p></div>
           <div className="countdown-chip">⏳ {Math.floor(countdownH/24)}g {countdownH%24}s</div>
         </div>
         <button className="btn btn-primary" style={{width:'100%',marginTop:16}} onClick={()=>setView('exams')}>
           Denemelere Git <ArrowRight size={16}/>
         </button>
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'1fr',gap:12}}>
+        <div className="card" style={{margin:0, padding:16, cursor:'pointer', display:'flex', alignItems:'center', gap:12, border:'1px solid #bbf7d0', background:'#f0fdf4'}} onClick={()=>setView('pomodoro')}>
+          <div style={{background:'#dcfce7', padding:10, borderRadius:12}}><Timer size={24} color="#22c55e"/></div>
+          <div>
+            <div style={{fontWeight:700, fontSize:'1rem'}}>Pomodoro Sayacı</div>
+            <div style={{fontSize:'0.8rem', color:'#166534'}}>Odaklanma & Mola Takibi</div>
+          </div>
+        </div>
       </div>
 
       <div style={{display:'grid',gridTemplateColumns:'1fr',gap:12}}>
@@ -465,6 +475,95 @@ function ReviewView({ results, onBack }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// =================== PAST QUESTIONS ===================
+function PastQuestionsView({ onBack }) {
+  const [questions, setQuestions] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [filters, setFilters] = useState({ year: '', type: 'Hakimlik' });
+  const [openIdx, setOpenIdx] = useState(null);
+
+  useEffect(() => {
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (filters.year) params.append('year', filters.year);
+    if (filters.type) params.append('exam_type', filters.type);
+    
+    fetch(`${API}/past-questions?${params.toString()}`)
+      .then(r => r.json())
+      .then(d => { setQuestions(d); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [filters]);
+
+  return (
+    <div className="animate-fade">
+      <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:20}}>
+        <button className="btn btn-secondary" style={{padding:'8px 12px'}} onClick={onBack}>←</button>
+        <h1>Çıkmış Sorular</h1>
+      </div>
+
+      <div style={{display:'flex', gap:10, marginBottom:20}}>
+          <select className="option-btn" style={{flex:1, cursor:'pointer', padding:'8px 12px', background:'#fff'}} value={filters.type} onChange={e => setFilters({...filters, type: e.target.value})}>
+            <option value="Hakimlik">⚖️ Hakimlik</option>
+            <option value="HMGS">🎓 HMGS</option>
+            <option value="Sayıştay">🏛️ Sayıştay</option>
+          </select>
+          <select className="option-btn" style={{flex:1, cursor:'pointer', padding:'8px 12px', background:'#fff'}} value={filters.year} onChange={e => setFilters({...filters, year: e.target.value})}>
+            <option value="">Tüm Yıllar</option>
+            {[...Array(10)].map((_, i) => (
+              <option key={i} value={2025-i}>{2025-i}</option>
+            ))}
+          </select>
+      </div>
+
+      {loading ? (
+        <div className="card"><p>Sorular getiriliyor...</p></div>
+      ) : questions.length === 0 ? (
+        <div className="card" style={{textAlign:'center', padding:'40px 20px'}}>
+          <BookMarked size={48} color="var(--border)" style={{marginBottom:16}}/>
+          <p style={{color:'var(--text-muted)'}}>Henüz bu kategoride soru bulunmuyor.</p>
+          <div className="premium-lock" style={{marginTop:20, opacity:0.6}}>
+            🔒 <b>Premium Yakında:</b> Son 10 yılın tüm çıkmış soruları çok yakında burada olacak!
+          </div>
+        </div>
+      ) : (
+        questions.map((q, i) => (
+          <div key={q.id} className="review-card" style={{position:'relative'}}>
+            {q.is_premium && <div style={{position:'absolute', top:12, right:12}} title="Premium İçerik">💎</div>}
+            <div style={{padding:14, cursor:'pointer'}} onClick={() => setOpenIdx(openIdx === i ? null : i)}>
+              <div style={{fontSize:'0.7rem', color:'var(--primary)', fontWeight:700}}>{q.year} - {q.exam_type} | {q.subject}</div>
+              <div style={{fontSize:'0.85rem', marginTop:4}}>{q.question_text}</div>
+            </div>
+            {openIdx === i && (
+              <div style={{padding:'0 14px 14px', borderTop:'1px solid var(--border)'}}>
+                 <div style={{margin:'12px 0'}}>
+                  {['A','B','C','D','E'].map(o => (
+                    <div key={o} className={`option-btn ${o === q.correct_answer ? 'correct' : ''}`} style={{cursor:'default', padding:'8px 12px', marginBottom:4}}>
+                      <div className="option-letter" style={o === q.correct_answer?{background:'var(--success)',color:'#fff',borderColor:'var(--success)'}:{}}>{o}</div>
+                      <span style={{fontSize:'0.82rem'}}>{q[`option_${o.toLowerCase()}`]}</span>
+                    </div>
+                  ))}
+                </div>
+                {q.explanation && (
+                  <div className="explanation-box">
+                    <div style={{fontWeight:700, fontSize:'0.75rem', color:'var(--primary)', marginBottom:4}}>📖 Çözüm</div>
+                    <p style={{fontSize:'0.82rem', lineHeight:1.6}}>{q.explanation}</p>
+                  </div>
+                )}
+                {q.hap_bilgisi && (
+                  <div className="hap-bilgi">
+                    <div className="hap-bilgi-title"><Flame size={12}/> HAP BİLGİ</div>
+                    <p style={{fontSize:'0.8rem', lineHeight:1.6}}>{q.hap_bilgisi}</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ))
+      )}
     </div>
   );
 }
