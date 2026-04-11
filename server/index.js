@@ -230,9 +230,9 @@ app.get('/api/flashcards', async (req, res) => {
         const flashcards = rows.map(q => ({
             id: q.id,
             subject: q.subject,
-            front: q.question_text,
-            answer: q[`option_${q.correct_answer.toLowerCase()}`] || '',
-            summary: q.topic_summary
+            front: q.topic_summary,
+            answer: q.explanation || (q[`option_${q.correct_answer.toLowerCase()}`] || ''),
+            originalQuestion: q.question_text
         }));
         res.json(flashcards);
     } catch(e) {

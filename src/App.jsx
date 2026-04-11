@@ -227,13 +227,13 @@ function FlashcardsView({ onBack }) {
             </div>
           </div>
           <div className="flashcard-back card" style={{padding:0, overflow:'hidden'}}>
-            <div style={{background:'var(--success)',padding:'16px',color:'#fff'}}>
-              <div style={{fontSize:'0.75rem',fontWeight:800,letterSpacing:1,marginBottom:4}}>DOĞRU CEVAP</div>
-              <div style={{fontSize:'1rem',fontWeight:600}}>{card.answer}</div>
+            <div style={{background:'var(--primary)',padding:'16px',color:'#fff'}}>
+              <div style={{fontSize:'0.75rem',fontWeight:800,letterSpacing:1,marginBottom:4}}>DETAYLI AÇIKLAMA</div>
+              <div style={{fontSize:'1rem',fontWeight:600,lineHeight:1.5}}>{card.answer}</div>
             </div>
             <div className="hap-bilgi" style={{margin:0,flex:1,overflowY:'auto',borderRadius:0,border:'none',background:'var(--bg-white)',padding:'20px 16px',boxShadow:'none'}}>
-               <div className="hap-bilgi-title" style={{color:'var(--primary)'}}><Flame size={14} color="var(--primary)"/> HAP BİLGİ</div>
-               <p style={{fontSize:'0.9rem',color:'var(--text)',lineHeight:1.7}}>{card.summary}</p>
+               <div className="hap-bilgi-title" style={{color:'var(--text-muted)'}}><BookOpen size={14}/> İLGİLİ SORU</div>
+               <p style={{fontSize:'0.85rem',color:'var(--text-muted)',lineHeight:1.6,fontStyle:'italic'}}>"{card.originalQuestion}"</p>
             </div>
           </div>
         </div>

@@ -84,7 +84,7 @@ Kurallar:
 - %70'i olay sorusu olsun
 - ÖSYM zorluğunda olsun
 - explanation: doğru cevabın ilgili Kanun Maddesiyle açıklaması
-- topicSummary: kısa hap bilgi
+- topicSummary: Bu soruyla ilgili sınavda doğrudan çıkabilecek, "kart ön yüzü" olacak kadar kıymetli, 1-2 cümlelik kritik bir "Hap Bilgi" (Kesinlikle soru cümlesi olmasın)
 
 SADECE JSON dizisi döndür, başka hiçbir şey yazma.
 Her obje: {"subject","question","optA","optB","optC","optD","optE","correct","explanation","topicSummary"}` }]
@@ -145,7 +145,7 @@ Kurallar:
 2. Soruların %70'i "olay (kurgu)" sorusu, %30'u "bilgi" sorusu olsun.
 3. Zorluk derecesi: ÖSYM / Adli Yargı Hakimlik sınavı düzeyinde (Zor).
 4. Her sorunun "explanation" kısmında ilgili Kanun Maddesi numarasını mutlaka belirt.
-5. "topicSummary" kısmına o sorunun konusuyla ilgili unutulmaması gereken 1 cümlelik "hap bilgi" yaz.
+5. "topicSummary" kısmına bu sorunun konusuyla ilgili, flashcard kartının ön yüzünde tek başına anlam ifade edecek, bağımsız ve kıymetli bir "Hap Bilgi" (İpucu/Özet) yaz (Soru sorma, bilgi ver).
 6. "subject" alanına listedeki ders adını harfiyen yaz.
 
 SADECE saf JSON dizisi döndür.
