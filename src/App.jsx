@@ -75,7 +75,7 @@ export default function App() {
   const daysToExam = (() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const examDate = new Date('2026-04-26T00:00:00');
+    const examDate = new Date('2026-09-27T00:00:00');
     return Math.max(0, Math.floor((examDate - today) / 86400000));
   })();
   const nextMonday = (() => { const d = new Date(); d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7)); return d; })();
