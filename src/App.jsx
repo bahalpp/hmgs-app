@@ -138,7 +138,7 @@ function Dashboard({studyTime,isTimerRunning,setIsTimerRunning,setStudyTime,stre
   return (
     <div className="animate-fade">
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:24}}>
-        <div><p style={{margin:0,fontSize:'0.85rem'}}>Hoş geldin 👋</p><h1>HMGS Hazırlık</h1></div>
+        <div><p style={{margin:0,fontSize:'0.85rem'}}>Hoş geldin 👋</p><h1>HMGS Hazırlan</h1></div>
         <div className="streak-badge"><Flame size={15}/>🔥 {streak} Gün</div>
       </div>
 

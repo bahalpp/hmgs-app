@@ -10,8 +10,8 @@ export default defineConfig({
       includeAssets: ['favicon.svg', 'apple-icon-180.png'],
       manifestFilename: 'manifest.json',
       manifest: {
-        name: 'HMGS Çalışma ve Deneme Uygulaması',
-        short_name: 'HMGS Hazırlık',
+        name: 'HMGS Hazırlan',
+        short_name: 'HMGS Hazırlan',
         description: 'Hukuk Mesleklerine Giriş Sınavı hazırlık uygulaması.',
         theme_color: '#f8fafc',
         background_color: '#ffffff',
